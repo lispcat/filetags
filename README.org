@@ -4,7 +4,7 @@ A novel way to automatically organize your files via symlinks by "tagging" them 
 
 * Purpose
 
-Imagine that you're using a music DAW (Digital Audio Workstation) and want to mark several files as "favorite" so you can quickly come back to them later. Most DAWs don't provide such functionality, so the only realistic options are to either copy or move your favorite samples to a dedicated "favorites" directory. This is not very ideal. It can be very time-consuming and meticulous.
+Imagine that you're using a music DAW (Digital Audio Workstation) and want to mark several files as "favorite" so you can quickly come back to them later. Most DAWs don't provide such functionality, so the only realistic options are to either copy or move your favorite samples to a dedicated "favorites" directory. This is not very ideal. It can be very time-consuming and meticulous to move or copy files from one location to another, especially from within your DAW, if it even supports it.
 
 So what if there was a way to automatically organize any arbitrary file to a dedicated directory, without any file duplication or moving? and without every having to leave your DAW for any of the sorting?
 

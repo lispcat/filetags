@@ -1,31 +1,22 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::mpsc,
+    sync::{mpsc, Arc},
+    thread,
+    time::Duration,
 };
 
 use anyhow::Context;
+use args::Args;
+use config::{Config, Rule};
+use crossbeam_channel::{self as channel, Sender};
 use notify::{
     event::{ModifyKind, RenameMode},
     Event, EventKind, RecursiveMode, Watcher,
 };
-use regex::Regex;
-use smart_default::SmartDefault;
 
-#[derive(SmartDefault, Debug)]
-struct Config {
-    #[default(true)]
-    create_missing_directories: bool,
-
-    #[default("/home/sui/Music/prod/Samples/")]
-    watch_dir: PathBuf,
-
-    #[default("/home/sui/Music/prod/Samples/Favorites")]
-    dest_dir: PathBuf,
-
-    #[default(Regex::new(r"^_.*$").expect("failed to create default regex"))]
-    pattern: Regex,
-}
+mod args;
+mod config;
 
 // TODO:
 // - prevent recursive searching when DestDir is within WatchDir or symlinking dirs.
@@ -33,9 +24,15 @@ struct Config {
 fn main() -> anyhow::Result<()> {
     // init ///////////////////////////////////////////////////////////////////
 
-    let config = Config::default();
+    let args = Args {
+        config_path: "examples/config.yml".into(),
+    };
 
-    init_dirs(&config)?;
+    let config = Config::new(&args)?;
+
+    println!("CONFIG: {:#?}", config);
+
+    // init_dirs(&config)?;
 
     // TODO: first scan ///////////////////////////////////////////////////////
     // - delete all broken symlinks in dest_dir (later, run this every config.clean_interval).
@@ -46,38 +43,74 @@ fn main() -> anyhow::Result<()> {
 
     // set up watchers ////////////////////////////////////////////////////////
 
-    let (tx, rx) = mpsc::channel();
+    let (event_tx, event_rx) = channel::unbounded();
 
-    let mut watcher = notify::recommended_watcher(tx)?;
-
-    watcher.watch(&config.watch_dir, RecursiveMode::Recursive)?;
-
-    for res in rx {
-        match res {
-            Ok(event) => handle_event(&config, &event)?,
-            Err(e) => println!("> Watch Error: {:?}", e),
+    // start watcher for each watch_dir
+    for rule in &config.rules {
+        for watch_dir in &rule.watch {
+            let tx: Sender<Event> = event_tx.clone();
+            let r = rule.clone();
+            let w = watch_dir.clone();
+            thread::spawn(move || -> anyhow::Result<()> { run_watcher_with_sender(r, w, tx) });
         }
     }
+
+    // disconnect channel by dropping sender
+    drop(event_tx);
+
+    // process one event at a time in main
+    loop {
+        if let Ok(event) = event_rx.recv() {
+            handle_event(&config, &event);
+        }
+    }
+
     Ok(())
 }
 
-/// To be run at startup.
-/// Initialize directories and catch errors early to prevent mild catastrophes.
-fn init_dirs(config: &Config) -> anyhow::Result<()> {
-    let path = &config.dest_dir;
-    if !path.try_exists()? {
-        eprintln!("PATH DOES NOT EXIST ({:?})", path);
-        if config.create_missing_directories {
-            println!("Creating path: {:?}", path);
-            fs::create_dir_all(path)
-                .with_context(|| format!("failed to create symlink directory: {:?}", path))?;
-            println!("Created path at: {:?}", path);
-        } else {
-            anyhow::bail!("path does not exist! terminating...");
+fn run_watcher_with_sender(
+    rule: Rule,
+    watch_dir: PathBuf,
+    tx: Sender<Event>,
+) -> anyhow::Result<()> {
+    let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
+        Ok(event) => match tx.send(event) {
+            Ok(x) => println!("SENT!!!: {:?}", x),
+            Err(e) => println!("FAILED TO SEND: {:?}", e),
+        },
+        Err(e) => {
+            println!("watch error...");
         }
+    })?;
+
+    println!("Starting watcher at: {:?}", watch_dir);
+    watcher.watch(&watch_dir, RecursiveMode::Recursive)?;
+
+    // Keep the watcher alive - it will send events via the closure
+    loop {
+        thread::sleep(Duration::from_secs(1));
     }
-    Ok(())
 }
+
+// fn create_watcher() {}
+
+// /// To be run at startup.
+// /// Initialize directories and catch errors early to prevent mild catastrophes.
+// fn init_dirs(config: &Config) -> anyhow::Result<()> {
+//     let path = &config.dest_dir;
+//     if !path.try_exists()? {
+//         eprintln!("PATH DOES NOT EXIST ({:?})", path);
+//         if config.create_missing_directories {
+//             println!("Creating path: {:?}", path);
+//             fs::create_dir_all(path)
+//                 .with_context(|| format!("failed to create symlink directory: {:?}", path))?;
+//             println!("Created path at: {:?}", path);
+//         } else {
+//             anyhow::bail!("path does not exist! terminating...");
+//         }
+//     }
+//     Ok(())
+// }
 
 /// Handle an event thrown by NotifyWatcher.
 /// Depending on the kind of event that's thrown, it may run `handle_path`.
@@ -100,25 +133,26 @@ fn handle_event(config: &Config, event: &Event) -> anyhow::Result<()> {
 
 /// Check if the filename of the path matches the Regex, and if so, create symlink.
 fn handle_path(config: &Config, path: &Path) -> anyhow::Result<()> {
-    let filename = path
-        .file_name()
-        .with_context(|| format!("cannot get OsStr filename of path: {:?}", path))?
-        .to_str()
-        .with_context(|| format!("cannot convert OsStr to str for path: {:?}", path))?;
+    println!("DEBUG: handle path: {:?}", path);
+    //     let filename = path
+    //         .file_name()
+    //         .with_context(|| format!("cannot get OsStr filename of path: {:?}", path))?
+    //         .to_str()
+    //         .with_context(|| format!("cannot convert OsStr to str for path: {:?}", path))?;
 
-    if config.pattern.is_match(filename) {
-        eprintln!("REGEX MATCHES!: {}", filename);
-    } else {
-        eprintln!("Regex does not match: {}", filename);
-    }
+    //     if config.pattern.is_match(filename) {
+    //         eprintln!("REGEX MATCHES!: {}", filename);
+    //     } else {
+    //         eprintln!("Regex does not match: {}", filename);
+    //     }
     Ok(())
 }
 
-/// Creates a symlink from orig_path to dest_dir.
-fn create_symlink(orig_path: &Path, dest_dir: &Path) -> anyhow::Result<()> {
-    eprintln!(
-        "Creating symlink from ({:?}) to ({:?})...",
-        orig_path, dest_dir
-    );
-    Ok(())
-}
+// /// Creates a symlink from orig_path to dest_dir.
+// fn create_symlink(orig_path: &Path, dest_dir: &Path) -> anyhow::Result<()> {
+//     eprintln!(
+//         "Creating symlink from ({:?}) to ({:?})...",
+//         orig_path, dest_dir
+//     );
+//     Ok(())
+// }

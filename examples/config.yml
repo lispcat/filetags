@@ -1,0 +1,12 @@
+settings:
+
+rules:
+
+  - name: "favorite samples"
+    watch:
+      - "~/Music/prod/Samples/sample_packs/"
+    dest:
+      - "~/Music/prod/Samples/_Favorites/"
+    regex:
+      - "^_.*"
+    settings:

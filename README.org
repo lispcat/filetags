@@ -10,7 +10,7 @@ So what if there was a way to automatically organize any arbitrary file to a ded
 
 This project seeks to solve exactly that, by automatically symlinking files with a matching filename substring/cookie to a specified directory.
 
-So for example, if I find a sample that I really like, all I would need to do to tag it as a "favorite", would be to rename the file to include a filename cookie, such as ="^_.*"= (a filename prefixed with an underscore) to automatically symlink that file to my "favorites" directory. Thus, streamlining this style of file organization by tenfold, and making this possible no matter the front-end, as long as it can rename files.
+So for example, if I find a sample that I really like, all I would need to do to tag it as a "favorite", would be to rename the file to include a filename cookie in regex, such as ="^_.*"= (a filename prefixed with an underscore) to automatically symlink that file to my "favorites" directory. Thus, streamlining this style of file organization by tenfold, and making this possible no matter the front-end, as long as it can rename files.
 
 And because it's file-agnostic, it can be used to organize your photos, movies, documents, and anything else. As long as it's a file.
 
@@ -23,5 +23,8 @@ TODO: more info.
 * Features
 
 - specify multiple "rules", where each rule specifies directories to monitor and directories to symlink to.
+- broken symlinks are automatically deleted periodically.
+- low memory footprint even with many files being watched.
+- currently only supports Linux, but planning on adding support for other operating systems.
 
 

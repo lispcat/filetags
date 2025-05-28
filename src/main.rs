@@ -28,11 +28,10 @@ fn main() -> anyhow::Result<()> {
         config_path: "examples/config.yml".into(),
     };
 
-    let config = Config::new(&args)?;
+    let config = Arc::new(Config::new(&args)?);
+    eprintln!("CONFIG: {:#?}", config);
 
-    println!("CONFIG: {:#?}", config);
-
-    // init_dirs(&config)?;
+    init_dirs(&config)?;
 
     // TODO: first scan ///////////////////////////////////////////////////////
     // - delete all broken symlinks in dest_dir (later, run this every config.clean_interval).
@@ -45,15 +44,7 @@ fn main() -> anyhow::Result<()> {
 
     let (event_tx, event_rx) = channel::unbounded();
 
-    // start watcher for each watch_dir
-    for rule in &config.rules {
-        for watch_dir in &rule.watch {
-            let tx: Sender<Event> = event_tx.clone();
-            let r = rule.clone();
-            let w = watch_dir.clone();
-            thread::spawn(move || -> anyhow::Result<()> { run_watcher_with_sender(r, w, tx) });
-        }
-    }
+    start_watchers_for_each_watch_dir(&config, &event_tx)?;
 
     // disconnect channel by dropping sender
     drop(event_tx);
@@ -61,30 +52,85 @@ fn main() -> anyhow::Result<()> {
     // process one event at a time in main
     loop {
         if let Ok(event) = event_rx.recv() {
-            handle_event(&config, &event);
+            handle_event(&config, &event)?;
         }
     }
 
     Ok(())
 }
 
-fn run_watcher_with_sender(
-    rule: Rule,
-    watch_dir: PathBuf,
+/// To be run at startup.
+/// Initialize directories and catch errors early to prevent mild catastrophes.
+fn init_dirs(config: &Config) -> anyhow::Result<()> {
+    for rule in &config.rules {
+        for path in &rule.watch {
+            if !path.try_exists()? {
+                eprintln!("PATH DOES NOT EXIST ({:?})", path);
+                if get_setting!(config, rule, create_missing_directories) {
+                    println!("Creating path: {:?}", path);
+                    fs::create_dir_all(path).with_context(|| {
+                        format!("failed to create symlink directory: {:?}", path)
+                    })?;
+                    println!("Created path at: {:?}", path);
+                } else {
+                    anyhow::bail!("path does not exist! terminating...");
+                }
+            }
+        }
+    }
+    // let path = &config.dest_dir;
+    // if !path.try_exists()? {
+    //     eprintln!("PATH DOES NOT EXIST ({:?})", path);
+    //     if config.create_missing_directories {
+    //         println!("Creating path: {:?}", path);
+    //         fs::create_dir_all(path)
+    //             .with_context(|| format!("failed to create symlink directory: {:?}", path))?;
+    //         println!("Created path at: {:?}", path);
+    //     } else {
+    //         anyhow::bail!("path does not exist! terminating...");
+    //     }
+    // }
+    Ok(())
+}
+
+fn start_watchers_for_each_watch_dir(
+    config: &Arc<Config>,
+    tx: &Sender<Event>,
+) -> anyhow::Result<()> {
+    // start watcher for each watch_dir
+    for (rule_idx, rule) in config.rules.iter().enumerate() {
+        for (watch_idx, _) in rule.watch.iter().enumerate() {
+            let config_arc = Arc::clone(config);
+            let tx: Sender<Event> = tx.clone();
+            thread::spawn(move || -> anyhow::Result<()> {
+                start_watcher(config_arc, rule_idx, watch_idx, tx)
+            });
+        }
+    }
+    Ok(())
+}
+
+fn start_watcher(
+    config: Arc<Config>,
+    rule_idx: usize,
+    watch_idx: usize,
     tx: Sender<Event>,
 ) -> anyhow::Result<()> {
+    let rule = &config.rules[rule_idx];
+    let watch = &rule.watch[watch_idx];
+
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
         Ok(event) => match tx.send(event) {
             Ok(x) => println!("SENT!!!: {:?}", x),
             Err(e) => println!("FAILED TO SEND: {:?}", e),
         },
         Err(e) => {
-            println!("watch error...");
+            println!("watch error...: {}", e);
         }
     })?;
 
-    println!("Starting watcher at: {:?}", watch_dir);
-    watcher.watch(&watch_dir, RecursiveMode::Recursive)?;
+    println!("Starting watcher at: {:?}", watch);
+    watcher.watch(watch, RecursiveMode::Recursive)?;
 
     // Keep the watcher alive - it will send events via the closure
     loop {
@@ -93,24 +139,6 @@ fn run_watcher_with_sender(
 }
 
 // fn create_watcher() {}
-
-// /// To be run at startup.
-// /// Initialize directories and catch errors early to prevent mild catastrophes.
-// fn init_dirs(config: &Config) -> anyhow::Result<()> {
-//     let path = &config.dest_dir;
-//     if !path.try_exists()? {
-//         eprintln!("PATH DOES NOT EXIST ({:?})", path);
-//         if config.create_missing_directories {
-//             println!("Creating path: {:?}", path);
-//             fs::create_dir_all(path)
-//                 .with_context(|| format!("failed to create symlink directory: {:?}", path))?;
-//             println!("Created path at: {:?}", path);
-//         } else {
-//             anyhow::bail!("path does not exist! terminating...");
-//         }
-//     }
-//     Ok(())
-// }
 
 /// Handle an event thrown by NotifyWatcher.
 /// Depending on the kind of event that's thrown, it may run `handle_path`.

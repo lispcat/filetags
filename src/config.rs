@@ -1,4 +1,4 @@
-use std::{env::VarError, fs, path::PathBuf};
+use std::{default, env::VarError, fs, path::PathBuf};
 
 use anyhow::Context;
 use regex::Regex;
@@ -8,6 +8,9 @@ use smart_default::SmartDefault;
 
 use crate::args::Args;
 
+/// The settings field specifies a set of defaults for all rules.
+/// The rules field specifies a list of rules.
+///
 #[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
@@ -15,6 +18,22 @@ pub struct Config {
     pub rules: Vec<Rule>,
 }
 
+impl Config {
+    pub fn new(args: &Args) -> anyhow::Result<Self> {
+        let path: PathBuf = args.config_path.clone();
+        let contents: String =
+            fs::read_to_string(path).with_context(|| "failed to read config file")?;
+        let config: Self = serde_yml::from_str(&contents)?;
+        Ok(config)
+    }
+}
+
+/// Each Rule most notably has a `watch` and `dest` field, where `watch` is a list of directories
+/// to look for filename cookies for, and `dest` is a list of directories to create symlinks to.
+///
+/// The `settings` field specifies overrides to the global default settings set in the
+/// Config struct.
+///
 #[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Rule {
@@ -33,9 +52,13 @@ pub struct Rule {
     #[serde(with = "serde_regex")]
     pub regex: Vec<Regex>,
 
-    pub settings: Option<Settings>,
+    pub settings: RuleSettings,
 }
 
+/// The `Settings` struct is used to define the defaults for settings for all Rules.
+///
+/// Overrides on a per-Rule basis can be done in each instance of `RuleSettings` in each Rule.
+///
 #[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
@@ -53,23 +76,38 @@ pub struct Settings {
     pub follow_symlinks: bool,
 }
 
-impl Config {
-    pub fn new(args: &Args) -> anyhow::Result<Self> {
-        let path: PathBuf = args.config_path.clone();
-        let contents: String = read_file(&path)?;
-        let config: Self = serde_yml::from_str(&contents)?;
-        Ok(config)
-    }
+/// A copy of the `Settings` struct except that every field is wrapped in an `Option<T>` and
+/// defaults to `None`.
+///
+/// This is to be used inside every Rule.
+///
+/// The reason for the differentiation between `Settings` and `RuleSettings` is so that when
+/// `RuleSettings` has a field with no explicitly set default value, it searches the `Settings`
+/// struct.
+///
+#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RuleSettings {
+    pub create_missing_directories: Option<bool>,
+    #[serde(with = "serde_regex")]
+    pub exclude_pattern: Option<Vec<Regex>>,
+    pub max_depth: Option<u32>,
+    pub follow_symlinks: Option<bool>,
 }
 
-/// read file and return contents as String
-fn read_file(contents: &PathBuf) -> anyhow::Result<String> {
-    fs::read_to_string(contents).with_context(|| "failed to read config file")
+/// Given a `Rule` and a setting name, try to get the setting value. If `None`, get the default
+/// from Config.
+///
+#[macro_export]
+macro_rules! get_setting {
+    ($config:tt, $rule:tt, $name:tt) => {{
+        $rule.settings.$name.unwrap_or($config.settings.$name)
+    }};
 }
 
 // Deserializer shell expansions //////////////////////////////////////////////
 
-/// Trait Extension for PathBuf for shell expansions
+/// Trait Extension for PathBuf for shell expansions.
 trait PathBufExpand {
     fn shell_expand(&self) -> Result<PathBuf, LookupError<VarError>>;
 }
@@ -84,7 +122,7 @@ impl PathBufExpand for PathBuf {
     }
 }
 
-/// a custom deserializer for Vec<PathBuf> to expand tildes and variables
+/// a custom deserializer for `Vec<PathBuf>` to expand tildes and variables.
 fn expand_paths<'de, D>(deserializer: D) -> Result<Vec<PathBuf>, D::Error>
 where
     D: Deserializer<'de>,

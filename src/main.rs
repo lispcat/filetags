@@ -46,17 +46,16 @@ fn main() -> anyhow::Result<()> {
 
     start_watchers_for_each_watch_dir(&config, &event_tx)?;
 
-    // disconnect channel by dropping sender
+    // disconnect from channel in main
     drop(event_tx);
 
-    // process one event at a time in main
+    // process one event at a time in main until process terminated
     loop {
-        if let Ok(event) = event_rx.recv() {
-            handle_event(&config, &event)?;
+        match event_rx.recv() {
+            Ok(event) => handle_event(&config, &event)?,
+            Err(e) => println!("ERROR received from thread: {:?}", e),
         }
     }
-
-    Ok(())
 }
 
 /// To be run at startup.
@@ -64,10 +63,12 @@ fn main() -> anyhow::Result<()> {
 fn init_dirs(config: &Config) -> anyhow::Result<()> {
     for rule in &config.rules {
         for path in &rule.watch {
-            if !path.try_exists()? {
-                eprintln!("PATH DOES NOT EXIST ({:?})", path);
+            if path.try_exists()? {
+                println!("Path to watch found: {:?}", path);
+            } else {
+                println!("Path NOT found: {:?}", path);
                 if get_setting!(config, rule, create_missing_directories) {
-                    println!("Creating path: {:?}", path);
+                    println!("Creating directory at: {:?}", path);
                     fs::create_dir_all(path).with_context(|| {
                         format!("failed to create symlink directory: {:?}", path)
                     })?;
@@ -78,21 +79,13 @@ fn init_dirs(config: &Config) -> anyhow::Result<()> {
             }
         }
     }
-    // let path = &config.dest_dir;
-    // if !path.try_exists()? {
-    //     eprintln!("PATH DOES NOT EXIST ({:?})", path);
-    //     if config.create_missing_directories {
-    //         println!("Creating path: {:?}", path);
-    //         fs::create_dir_all(path)
-    //             .with_context(|| format!("failed to create symlink directory: {:?}", path))?;
-    //         println!("Created path at: {:?}", path);
-    //     } else {
-    //         anyhow::bail!("path does not exist! terminating...");
-    //     }
-    // }
     Ok(())
 }
 
+/// For each watch dir, spawn a notify watcher, where every `notify::Event` the watcher creates
+/// is forwarded to its corresponding crossbeam channel Receiver from the calling function.
+///
+/// Each watcher is physically started by running the `start_watcher` function.
 fn start_watchers_for_each_watch_dir(
     config: &Arc<Config>,
     tx: &Sender<Event>,
@@ -110,6 +103,12 @@ fn start_watchers_for_each_watch_dir(
     Ok(())
 }
 
+/// Starts a notify watcher, where every `notify::Event` the watcher creates is forwarded
+/// to its corresponding crossbeam channel Receiver.
+///
+/// This function has a never-ending loop at the end to keep the watcher alive.
+/// This function is meant to be ran as a new thread, specifically in the function
+/// `start_watchers_for_each_watch_dir`.
 fn start_watcher(
     config: Arc<Config>,
     rule_idx: usize,
@@ -138,10 +137,10 @@ fn start_watcher(
     }
 }
 
-// fn create_watcher() {}
-
-/// Handle an event thrown by NotifyWatcher.
-/// Depending on the kind of event that's thrown, it may run `handle_path`.
+/// Handle a `notify::Event` received from the crossbeam channel Receiver.
+///
+/// When a file creation or filename modification `notify::Event` is received,
+/// run `handle_path` to check the filename and take action if needed.
 fn handle_event(config: &Config, event: &Event) -> anyhow::Result<()> {
     match event.kind {
         EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
@@ -159,7 +158,14 @@ fn handle_event(config: &Config, event: &Event) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Check if the filename of the path matches the Regex, and if so, create symlink.
+// !
+// TODO: does each Event need config and rule information? ////////////////////
+//   if so, then each Event should be a tuple containing an additional rule_idx and watch_idx.
+// !
+
+/// Check if the filename of the path matches the specified Regex's, and take action if needed.
+///
+/// If it matches, create a symlink to the appropriate dest dir.
 fn handle_path(config: &Config, path: &Path) -> anyhow::Result<()> {
     println!("DEBUG: handle path: {:?}", path);
     //     let filename = path

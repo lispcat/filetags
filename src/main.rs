@@ -119,12 +119,19 @@ fn start_watcher(
     let watch = &rule.watch[watch_idx];
 
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
-        Ok(event) => match tx.send(event) {
-            Ok(x) => println!("SENT!!!: {:?}", x),
-            Err(e) => println!("FAILED TO SEND: {:?}", e),
+        Ok(event) => match event.kind {
+            // only send message if filename modification or file creation
+            EventKind::Modify(ModifyKind::Name(RenameMode::To)) | EventKind::Create(_) => {
+                match tx.send(event) {
+                    Ok(x) => println!("SENT!!!: {:?}", x),
+                    Err(e) => println!("FAILED TO SEND: {:?}", e),
+                }
+            }
+            // for all other events do nothing
+            _ => (),
         },
         Err(e) => {
-            println!("watch error...: {}", e);
+            println!("Watch Error! {}", e);
         }
     })?;
 
@@ -160,7 +167,7 @@ fn handle_event(config: &Config, event: &Event) -> anyhow::Result<()> {
 
 // !
 // TODO: does each Event need config and rule information? ////////////////////
-//   if so, then each Event should be a tuple containing an additional rule_idx and watch_idx.
+//   if so, then each Event should be an enum containing an additional rule_idx and watch_idx.
 // !
 
 /// Check if the filename of the path matches the specified Regex's, and take action if needed.

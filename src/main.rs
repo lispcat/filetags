@@ -1,14 +1,8 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
-    sync::{mpsc, Arc},
-    thread,
-    time::Duration,
-};
+use std::{fs, path::Path, sync::Arc, thread, time::Duration};
 
 use anyhow::Context;
 use args::Args;
-use config::{Config, Rule};
+use config::Config;
 use crossbeam_channel::{self as channel, Sender};
 use notify::{
     event::{ModifyKind, RenameMode},
@@ -20,6 +14,20 @@ mod config;
 
 // TODO:
 // - prevent recursive searching when DestDir is within WatchDir or symlinking dirs.
+
+/// Message to be sent throgh the crossbeam_channel.
+#[derive(Clone)]
+pub struct Message {
+    rule_idx: usize,
+    watch_idx: usize,
+    event: Event,
+}
+
+macro_rules! event_kinds_to_match {
+    () => {
+        EventKind::Modify(ModifyKind::Name(RenameMode::To)) | EventKind::Create(_)
+    };
+}
 
 fn main() -> anyhow::Result<()> {
     // init ///////////////////////////////////////////////////////////////////
@@ -42,7 +50,7 @@ fn main() -> anyhow::Result<()> {
 
     // set up watchers ////////////////////////////////////////////////////////
 
-    let (event_tx, event_rx) = channel::unbounded();
+    let (event_tx, event_rx) = channel::unbounded::<Message>();
 
     start_watchers_for_each_watch_dir(&config, &event_tx)?;
 
@@ -52,7 +60,7 @@ fn main() -> anyhow::Result<()> {
     // process one event at a time in main until process terminated
     loop {
         match event_rx.recv() {
-            Ok(event) => handle_event(&config, &event)?,
+            Ok(event) => handle_message(&config, &event)?,
             Err(e) => println!("ERROR received from thread: {:?}", e),
         }
     }
@@ -88,13 +96,13 @@ fn init_dirs(config: &Config) -> anyhow::Result<()> {
 /// Each watcher is physically started by running the `start_watcher` function.
 fn start_watchers_for_each_watch_dir(
     config: &Arc<Config>,
-    tx: &Sender<Event>,
+    tx: &Sender<Message>,
 ) -> anyhow::Result<()> {
     // start watcher for each watch_dir
     for (rule_idx, rule) in config.rules.iter().enumerate() {
         for (watch_idx, _) in rule.watch.iter().enumerate() {
             let config_arc = Arc::clone(config);
-            let tx: Sender<Event> = tx.clone();
+            let tx: Sender<Message> = tx.clone();
             thread::spawn(move || -> anyhow::Result<()> {
                 start_watcher(config_arc, rule_idx, watch_idx, tx)
             });
@@ -113,7 +121,7 @@ fn start_watcher(
     config: Arc<Config>,
     rule_idx: usize,
     watch_idx: usize,
-    tx: Sender<Event>,
+    tx: Sender<Message>,
 ) -> anyhow::Result<()> {
     let rule = &config.rules[rule_idx];
     let watch = &rule.watch[watch_idx];
@@ -121,8 +129,13 @@ fn start_watcher(
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
         Ok(event) => match event.kind {
             // only send message if filename modification or file creation
-            EventKind::Modify(ModifyKind::Name(RenameMode::To)) | EventKind::Create(_) => {
-                match tx.send(event) {
+            event_kinds_to_match!() => {
+                let new_message = Message {
+                    rule_idx,
+                    watch_idx,
+                    event,
+                };
+                match tx.send(new_message) {
                     Ok(x) => println!("SENT!!!: {:?}", x),
                     Err(e) => println!("FAILED TO SEND: {:?}", e),
                 }
@@ -148,16 +161,12 @@ fn start_watcher(
 ///
 /// When a file creation or filename modification `notify::Event` is received,
 /// run `handle_path` to check the filename and take action if needed.
-fn handle_event(config: &Config, event: &Event) -> anyhow::Result<()> {
+fn handle_message(config: &Config, message: &Message) -> anyhow::Result<()> {
+    let event = &message.event;
     match event.kind {
-        EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
+        event_kinds_to_match!() => {
             for path in &event.paths {
-                handle_path(config, path).context("failed to handle path")?;
-            }
-        }
-        EventKind::Create(_) => {
-            for path in &event.paths {
-                handle_path(config, path).context("failed to handle path")?;
+                handle_path(config, path, message).context("failed to handle path")?;
             }
         }
         _ => (),
@@ -173,7 +182,7 @@ fn handle_event(config: &Config, event: &Event) -> anyhow::Result<()> {
 /// Check if the filename of the path matches the specified Regex's, and take action if needed.
 ///
 /// If it matches, create a symlink to the appropriate dest dir.
-fn handle_path(config: &Config, path: &Path) -> anyhow::Result<()> {
+fn handle_path(config: &Config, path: &Path, message: &Message) -> anyhow::Result<()> {
     println!("DEBUG: handle path: {:?}", path);
     //     let filename = path
     //         .file_name()

@@ -1,4 +1,4 @@
-use std::{default, env::VarError, fs, path::PathBuf};
+use std::{env::VarError, fs, path::PathBuf};
 
 use anyhow::Context;
 use regex::Regex;

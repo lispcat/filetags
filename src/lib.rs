@@ -1,8 +1,6 @@
 use std::{fs, os::unix::fs::symlink, path::Path, sync::Arc, thread, time::Duration};
 
 use anyhow::Context;
-use args::Args;
-use config::Config;
 use crossbeam_channel::{self as channel, Receiver, Sender};
 use notify::{
     event::{ModifyKind, RenameMode},
@@ -11,6 +9,10 @@ use notify::{
 
 mod args;
 mod config;
+
+// re-export
+pub use args::*;
+pub use config::*;
 
 // TODO:
 // - prevent recursive searching when DestDir is within WatchDir or symlinking dirs.
@@ -36,7 +38,7 @@ pub fn run() -> anyhow::Result<()> {
     run_with_args(args)
 }
 
-fn run_with_args(args: Args) -> anyhow::Result<()> {
+pub fn run_with_args(args: Args) -> anyhow::Result<()> {
     // create a Config from Args
     let config = Arc::new(Config::new(&args)?);
     dbg!(&config);

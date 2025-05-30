@@ -2,7 +2,7 @@ use std::{env::VarError, fs, path::PathBuf};
 
 use anyhow::Context;
 use regex::Regex;
-use serde::{de::Error, Deserialize, Deserializer};
+use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 use shellexpand::LookupError;
 use smart_default::SmartDefault;
 
@@ -11,7 +11,7 @@ use crate::args::Args;
 /// The settings field specifies a set of defaults for all rules.
 /// The rules field specifies a list of rules.
 ///
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub settings: Settings,
@@ -34,7 +34,7 @@ impl Config {
 /// The `settings` field specifies overrides to the global default settings set in the
 /// Config struct.
 ///
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Rule {
     #[default("rule")]
@@ -59,7 +59,7 @@ pub struct Rule {
 ///
 /// Overrides on a per-Rule basis can be done in each instance of `RuleSettings` in each Rule.
 ///
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     #[default(true)]
@@ -85,19 +85,37 @@ pub struct Settings {
 /// `RuleSettings` has a field with no explicitly set default value, it searches the `Settings`
 /// struct.
 ///
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RuleSettings {
     pub create_missing_directories: Option<bool>,
-    #[serde(with = "serde_regex")]
+    #[serde(
+        deserialize_with = "serde_regex::deserialize",
+        serialize_with = "custom_serializer_option_vec_regex"
+    )]
     pub exclude_pattern: Option<Vec<Regex>>,
     pub max_depth: Option<u32>,
     pub follow_symlinks: Option<bool>,
 }
 
+fn custom_serializer_option_vec_regex<S>(
+    value: &Option<Vec<Regex>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(regexes) => {
+            let strings: Vec<String> = regexes.iter().map(|r| r.as_str().to_string()).collect();
+            strings.serialize(serializer)
+        }
+        None => serializer.serialize_none(),
+    }
+}
+
 /// Given a `Rule` and a setting name, try to get the setting value. If `None`, get the default
 /// from Config.
-///
 #[macro_export]
 macro_rules! get_setting {
     ($config:tt, $rule:tt, $name:tt) => {{

@@ -17,15 +17,6 @@ fn create_test_env() -> (TempDir, PathBuf) {
     (temp_dir, test_path)
 }
 
-fn setup_test_filesystem(root: &Path) -> anyhow::Result<()> {
-    fs::create_dir_all(root.join("watch_dir"))?;
-    fs::create_dir_all(root.join("dest_dir"))?;
-    fs::write(root.join("watch_dir/sample1.txt"), "")?;
-    fs::write(root.join("watch_dir/_sample2.txt"), "")?;
-
-    Ok(())
-}
-
 fn serialize_config(at_path: &Path, config: Config) -> anyhow::Result<()> {
     let yml_string = serde_yml::to_string(&config)?;
     let mut file = File::create(at_path)?;
@@ -34,48 +25,75 @@ fn serialize_config(at_path: &Path, config: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+macro_rules! create_dirs {
+    ($($dir:expr),+) => {{
+        $(
+            fs::create_dir_all($dir)?;
+        )+
+    }};
+}
+
+macro_rules! create_files {
+    ($($file:expr),+) => {{
+        $(
+            fs::File::create($file)?;
+        )+
+    }};
+}
+
 #[test]
 fn run_env_test_1() -> anyhow::Result<()> {
-    let (temp_dir, test_root) = create_test_env();
+    // create temp testing env
+    let (_, test_root) = create_test_env();
 
-    setup_test_filesystem(&test_root).context("failed to setup test filesystem")?;
+    // create dirs
     let watch_dir = test_root.join("watch_dir");
     let dest_dir = test_root.join("dest_dir");
+    create_dirs!(&test_root, &watch_dir, &dest_dir);
 
-    // create a custom config file via serializing
+    // create files
+    let file1 = watch_dir.join("_sample1.txt");
+    let file2 = watch_dir.join("sample2.txt");
+    let file3 = watch_dir.join("sample3.txt");
+    create_files!(&file1, &file2, &file3);
+
+    // for future reference...
+    let file2_renamed = watch_dir.join("_sample2.txt");
     let config_path = test_root.join("config.yml");
 
-    let config_tmp = Config {
-        rules: vec![Rule {
-            name: "test 1".into(),
-            watch: vec![test_root.join("watch_dir")],
-            dest: vec![test_root.join("dest_dir")],
-            regex: vec![Regex::new("^_.*").expect("failed to create regex")],
-            ..Rule::default()
-        }],
-        ..Config::default()
-    };
+    // create a custom config via serializing
+    serialize_config(
+        &config_path,
+        Config {
+            rules: vec![Rule {
+                name: "test 1".into(),
+                watch: vec![watch_dir],
+                dest: vec![dest_dir],
+                regex: vec![Regex::new("^_.*").expect("failed to create regex")],
+                ..Rule::default()
+            }],
+            ..Config::default()
+        },
+    )?;
 
-    serialize_config(&config_path, config_tmp)?;
-
+    // create Args using config_path
     let args = Args { config_path };
 
-    // before running the main program, start several separate threads:
+    // before running the main program, start several separate threads...
+
     // - perform filesystem operations some seconds later
     thread::spawn(move || {
-        thread::sleep(Duration::from_secs(2));
+        thread::sleep(Duration::from_secs(1));
 
-        match fs::rename(
-            watch_dir.join("sample1.txt"),
-            watch_dir.join("_sample1.txt"),
-        ) {
+        match fs::rename(file2, file2_renamed) {
             Ok(()) => println!("File renamed!"),
             Err(e) => eprintln!("Failed to rename file: {}", e),
         }
     });
-    // - terminate this process some more seconds later
+
+    // - terminate this whole program some more seconds later
     thread::spawn(move || {
-        thread::sleep(Duration::from_secs(4));
+        thread::sleep(Duration::from_secs(2));
         std::process::exit(0); // TODO: have a proper way to shut down
     });
 

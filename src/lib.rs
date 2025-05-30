@@ -1,4 +1,11 @@
-use std::{fs, os::unix::fs::symlink, path::Path, sync::Arc, thread, time::Duration};
+use std::{
+    fs,
+    os::unix::fs::symlink,
+    path::{Path, PathBuf},
+    sync::Arc,
+    thread,
+    time::Duration,
+};
 
 use anyhow::Context;
 use crossbeam_channel::{self as channel, Receiver, Sender};
@@ -13,6 +20,7 @@ mod config;
 // re-export
 pub use args::*;
 pub use config::*;
+use regex::Regex;
 
 // TODO:
 // - prevent recursive searching when DestDir is within WatchDir or symlinking dirs.
@@ -80,12 +88,14 @@ fn init_dirs(config: &Config) -> anyhow::Result<()> {
 }
 
 fn init_scan(config: &Arc<Config>) -> anyhow::Result<()> {
-    // TODO: init_scan ///////////////////////////////////////////////////////
-    // - delete all broken symlinks in dest_dir (later, run this every config.clean_interval).
-    // - scan all files recursively under watch_dir, create symlinks as appropriate.
-    //   - if symlink already exists at Dest,
-    //     - if points to orig file, do nothing.
-    //     - if points to another file, TODO process error appropriately.
+    // - walk throgh every dir path recursively with WalkDir...
+
+    // - ensure each is symlink and points to src_path
+
+    // - also need to clean every broken symlink somehow...
+
+    // - create symlinks as needed
+
     Ok(())
 }
 
@@ -194,6 +204,42 @@ fn handle_message(config: &Config, message: &Message) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn filename_matches_any_regex(filename: &str, regexes: &[Regex]) -> anyhow::Result<bool> {
+    Ok(regexes.iter().any(|r| r.is_match(filename)))
+}
+
+fn calc_link_from_src(
+    src_path: &Path,
+    watch_dir: &Path,
+    dest_dir: &Path,
+) -> anyhow::Result<PathBuf> {
+    let src_path_without_watch_dir = src_path.strip_prefix(watch_dir)?;
+    let link = dest_dir.join(src_path_without_watch_dir);
+
+    Ok(link)
+}
+
+fn ensure_symlink_and_expected_target(link_path: &Path, src_path: &Path) -> anyhow::Result<()> {
+    // something exists here, so ensure that the file at link_path is a symlink
+    let is_symlink = fs::symlink_metadata(link_path)?.file_type().is_symlink();
+    anyhow::ensure!(
+        is_symlink,
+        "Error: something already exists at link_path ({:?}) and it's not a symlink?!",
+        link_path
+    );
+
+    // ensure the existing symlink points to the src_path
+    let symlink_points_to_src = src_path == link_path;
+    anyhow::ensure!(
+        symlink_points_to_src,
+        "Error: existing symlink at link_path ({:?}) doesn't point to src_path ({:?})",
+        link_path,
+        src_path
+    );
+
+    Ok(())
+}
+
 /// Check if the filename of the path matches the specified Regex's, and take action if needed.
 ///
 /// If it matches, create a symlink to the appropriate dest dir.
@@ -209,77 +255,31 @@ fn handle_path(config: &Config, src_path: &Path, message: &Message) -> anyhow::R
 
     let regexes = &rule.regex;
 
-    let is_match: bool = regexes.iter().any(|r| r.is_match(filename));
-    if is_match {
+    if filename_matches_any_regex(filename, regexes)? {
         eprintln!("Regex matches! {:?}", filename);
-        eprintln!("Starting symlink creation...");
 
+        // For every dest_dir, check if the expected link_path has a symlink, and if not,
+        // create one.
         for dest in &rule.dest {
-            if !dest.exists() {
-                // this should not happen because init_dirs shouldve covered this
-                anyhow::bail!(format!(
-                    "Error: dest ({:?}) does not exist... was it deleted?",
-                    dest
-                ));
+            // ensure that the dest_dir exists
+            anyhow::ensure!(
+                dest.exists(),
+                "Error: dest ({:?}) does not exist... was it deleted?",
+                dest
+            );
+
+            // where the link_path should be
+            let link_path = calc_link_from_src(src_path, watch, dest)?;
+
+            if link_path.exists() {
+                // file exists, so now check if it's a symlink and points to src_path
+                ensure_symlink_and_expected_target(&link_path, src_path)?;
             } else {
-                let trailing_src_path = src_path.strip_prefix(watch)?;
-                let link_path = dest.join(trailing_src_path);
-
-                // now that the new link to create has been identified,
-                // should a new link be created? is a link already there? etc...
-
-                if !link_path.exists() {
-                    // link path doesn't exist, so create a symlink here.
-                    symlink(src_path, link_path).context("failed to create symlink")?;
-                } else {
-                    // something already exists here... is it what's supposed to be here?a
-                    let is_symlink = fs::symlink_metadata(src_path)?.file_type().is_symlink();
-
-                    if !is_symlink {
-                        // something exists at link_path but it's not a symlink?!?!
-                        anyhow::bail!(
-                            format!(
-                                "Error: something already exists at link_path ({:?}) and it's not a symlink?!",
-                                link_path
-                            )
-                        );
-                    } else {
-                        // it's a symlink! but does it point to the right src_path?
-                        let symlink_points_to_src = src_path == link_path;
-
-                        if !symlink_points_to_src {
-                            // an incorrect symlink points here... this is problematic...
-                            anyhow::bail!(
-                                format!(
-                                    "Error: existing symlink at link_path ({:?}) doesn't point to src_path ({:?})",
-                                    link_path,
-                                    src_path
-                                )
-                            );
-                        } else {
-                            // symlink exists and it points to the correct src_path!
-                            // so no further actions needed
-                        }
-                    }
-                }
+                // file doesn't exist, so create a symlink to there
+                symlink(src_path, link_path).context("failed to create symlink")?;
             }
         }
-
-        // TODO:
-        // - since the regex matches, there expects a symlink to the file in the rule's dest dirs.
-        // - check if the symlinks already exists in each dest dirs.
-        //   - if yes, continue
-        //   - if no, create a new symlink
     }
 
     Ok(())
 }
-
-// /// Creates a symlink from orig_path to dest_dir.
-// fn create_symlink(orig_path: &Path, dest_dir: &Path) -> anyhow::Result<()> {
-//     eprintln!(
-//         "Creating symlink from ({:?}) to ({:?})...",
-//         orig_path, dest_dir
-//     );
-//     Ok(())
-// }

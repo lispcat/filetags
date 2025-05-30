@@ -1,4 +1,4 @@
-use std::{fs, path::Path, sync::Arc, thread, time::Duration};
+use std::{fs, os::unix::fs::symlink, path::Path, sync::Arc, thread, time::Duration};
 
 use anyhow::Context;
 use args::Args;
@@ -16,14 +16,14 @@ mod config;
 // - prevent recursive searching when DestDir is within WatchDir or symlinking dirs.
 
 /// Message to be sent throgh the crossbeam_channel.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Message {
     rule_idx: usize,
     watch_idx: usize,
     event: Event,
 }
 
-macro_rules! event_kinds_to_match {
+macro_rules! match_event_kinds {
     () => {
         EventKind::Modify(ModifyKind::Name(RenameMode::To)) | EventKind::Create(_)
     };
@@ -37,11 +37,11 @@ fn main() -> anyhow::Result<()> {
     };
 
     let config = Arc::new(Config::new(&args)?);
-    eprintln!("CONFIG: {:#?}", config);
+    dbg!(&config);
 
     init_dirs(&config)?;
 
-    // TODO: first scan ///////////////////////////////////////////////////////
+    // TODO: init_scan ///////////////////////////////////////////////////////
     // - delete all broken symlinks in dest_dir (later, run this every config.clean_interval).
     // - scan all files recursively under watch_dir, create symlinks as appropriate.
     //   - if symlink already exists at Dest,
@@ -102,9 +102,10 @@ fn start_watchers_for_each_watch_dir(
     for (rule_idx, rule) in config.rules.iter().enumerate() {
         for (watch_idx, _) in rule.watch.iter().enumerate() {
             let config_arc = Arc::clone(config);
-            let tx: Sender<Message> = tx.clone();
+            let tx_clone: Sender<Message> = tx.clone();
+            // TODO: instead of simply cloning clone the sender and create a new instance of Message.
             thread::spawn(move || -> anyhow::Result<()> {
-                start_watcher(config_arc, rule_idx, watch_idx, tx)
+                start_watcher(config_arc, rule_idx, watch_idx, tx_clone)
             });
         }
     }
@@ -129,15 +130,16 @@ fn start_watcher(
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
         Ok(event) => match event.kind {
             // only send message if filename modification or file creation
-            event_kinds_to_match!() => {
+            match_event_kinds!() => {
                 let new_message = Message {
                     rule_idx,
                     watch_idx,
                     event,
                 };
+                dbg!(&new_message);
                 match tx.send(new_message) {
-                    Ok(x) => println!("SENT!!!: {:?}", x),
-                    Err(e) => println!("FAILED TO SEND: {:?}", e),
+                    Ok(_) => println!("Watcher sent message!"),
+                    Err(e) => println!("WATCHER FAILED TO SEND MESSAGE: {:?}", e),
                 }
             }
             // for all other events do nothing
@@ -162,11 +164,10 @@ fn start_watcher(
 /// When a file creation or filename modification `notify::Event` is received,
 /// run `handle_path` to check the filename and take action if needed.
 fn handle_message(config: &Config, message: &Message) -> anyhow::Result<()> {
-    let event = &message.event;
-    match event.kind {
-        event_kinds_to_match!() => {
-            for path in &event.paths {
-                handle_path(config, path, message).context("failed to handle path")?;
+    match message.event.kind {
+        match_event_kinds!() => {
+            for check_path in &message.event.paths {
+                handle_path(config, check_path, message).context("failed to handle path")?;
             }
         }
         _ => (),
@@ -174,27 +175,84 @@ fn handle_message(config: &Config, message: &Message) -> anyhow::Result<()> {
     Ok(())
 }
 
-// !
-// TODO: does each Event need config and rule information? ////////////////////
-//   if so, then each Event should be an enum containing an additional rule_idx and watch_idx.
-// !
-
 /// Check if the filename of the path matches the specified Regex's, and take action if needed.
 ///
 /// If it matches, create a symlink to the appropriate dest dir.
-fn handle_path(config: &Config, path: &Path, message: &Message) -> anyhow::Result<()> {
-    println!("DEBUG: handle path: {:?}", path);
-    //     let filename = path
-    //         .file_name()
-    //         .with_context(|| format!("cannot get OsStr filename of path: {:?}", path))?
-    //         .to_str()
-    //         .with_context(|| format!("cannot convert OsStr to str for path: {:?}", path))?;
+fn handle_path(config: &Config, src_path: &Path, message: &Message) -> anyhow::Result<()> {
+    let filename = src_path
+        .file_name()
+        .with_context(|| format!("cannot get OsStr filename of path: {:?}", src_path))?
+        .to_str()
+        .with_context(|| format!("cannot convert OsStr to str for path: {:?}", src_path))?;
 
-    //     if config.pattern.is_match(filename) {
-    //         eprintln!("REGEX MATCHES!: {}", filename);
-    //     } else {
-    //         eprintln!("Regex does not match: {}", filename);
-    //     }
+    let rule = &config.rules[message.rule_idx];
+    let watch = &rule.watch[message.watch_idx];
+
+    let regexes = &rule.regex;
+
+    let is_match: bool = regexes.iter().any(|r| r.is_match(filename));
+    if is_match {
+        eprintln!("Regex matches! {:?}", filename);
+        eprintln!("Starting symlink creation...");
+
+        for dest in &rule.dest {
+            if !dest.exists() {
+                // this should not happen because init_dirs shouldve covered this
+                anyhow::bail!(format!(
+                    "Error: dest ({:?}) does not exist... was it deleted?",
+                    dest
+                ));
+            } else {
+                let trailing_src_path = src_path.strip_prefix(watch)?;
+                let link_path = dest.join(trailing_src_path);
+
+                // now that the new link to create has been identified,
+                // should a new link be created? is a link already there? etc...
+
+                if !link_path.exists() {
+                    // link path doesn't exist, so create a symlink here.
+                    symlink(src_path, link_path).context("failed to create symlink")?;
+                } else {
+                    // something already exists here... is it what's supposed to be here?a
+                    let is_symlink = fs::symlink_metadata(src_path)?.file_type().is_symlink();
+
+                    if !is_symlink {
+                        // something exists at link_path but it's not a symlink?!?!
+                        anyhow::bail!(
+                            format!(
+                                "Error: something already exists at link_path ({:?}) and it's not a symlink?!",
+                                link_path
+                            )
+                        );
+                    } else {
+                        // it's a symlink! but does it point to the right src_path?
+                        let symlink_points_to_src = src_path == link_path;
+
+                        if !symlink_points_to_src {
+                            // an incorrect symlink points here... this is problematic...
+                            anyhow::bail!(
+                                format!(
+                                    "Error: existing symlink at link_path ({:?}) doesn't point to src_path ({:?})",
+                                    link_path,
+                                    src_path
+                                )
+                            );
+                        } else {
+                            // symlink exists and it points to the correct src_path!
+                            // so no further actions needed
+                        }
+                    }
+                }
+            }
+        }
+
+        // TODO:
+        // - since the regex matches, there expects a symlink to the file in the rule's dest dirs.
+        // - check if the symlinks already exists in each dest dirs.
+        //   - if yes, continue
+        //   - if no, create a new symlink
+    }
+
     Ok(())
 }
 

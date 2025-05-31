@@ -7,7 +7,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Context;
+use anyhow::{bail, Context};
 use crossbeam_channel::{self as channel, Receiver, Sender};
 use notify::{
     event::{ModifyKind, RenameMode},
@@ -21,6 +21,7 @@ mod config;
 pub use args::*;
 pub use config::*;
 use regex::Regex;
+use walkdir::WalkDir;
 
 // TODO:
 // - prevent recursive searching when DestDir is within WatchDir or symlinking dirs.
@@ -87,8 +88,71 @@ fn init_dirs(config: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn is_symlink_valid(path: &Path) -> anyhow::Result<bool> {
+    if let Ok(target_path) = fs::read_link(path) {
+        if target_path.is_absolute() && fs::metadata(&target_path).is_ok() {
+            return Ok(true);
+        }
+        let dirname = path.parent().unwrap_or_else(|| Path::new(""));
+        let resolved = dirname.join(&target_path);
+        if fs::metadata(resolved).is_ok() {
+            return Ok(true);
+        }
+    }
+    eprintln!("Symlink is broken: {:?}", path);
+    Ok(false)
+}
+
+fn path_is_rec_subdir_of_any(path: &Path, many_dirs: &[PathBuf]) -> anyhow::Result<bool> {
+    Ok(many_dirs.iter().any(|d| path.starts_with(d)))
+}
+
 fn init_scan(config: &Arc<Config>) -> anyhow::Result<()> {
     // - walk throgh every dir path recursively with WalkDir...
+    for rule in &config.rules {
+        for dest_dir in &rule.dest {
+            for entry in WalkDir::new(dest_dir) {
+                let entry = entry?;
+                let path = entry.path();
+
+                match fs::symlink_metadata(path) {
+                    Err(e) => anyhow::bail!(
+                        "could not perform metadata call on path or path does not exist: {}",
+                        e
+                    ),
+                    Ok(metadata) => {
+                        // if is_symlink, do some checks. otherwise, ignore file
+                        if metadata.file_type().is_symlink() {
+                            // if path matches any regex, do checks
+                            if path_matches_any_regex(path, &rule.regex)
+                                .context("failed to match regexes")?
+                            {
+                                // TODO: check if symlink is broken
+                                if !is_symlink_valid(path)
+                                    .context("failed to check if valid symlink")?
+                                {
+                                    // symlink is broken, so delete this symlink!
+                                    eprintln!("Symlink is broken, so deleting symlink: {:?}", path);
+                                    fs::remove_file(path)?;
+                                }
+                                // TODO: is it a subdir of any of rule.watch (Vec<Path>)
+                                else if !path_is_rec_subdir_of_any(path, &rule.watch)? {
+                                    // is not a subdir of any watch dirs, so delete symlink?
+                                    eprintln!("Symlink is not a subdir of any watch dirs, so deleting symlink: {:?}", path);
+                                    fs::remove_file(path)?;
+                                } else {
+                                    // existing symlink looks good!!!
+                                    eprintln!("Existing symlink looks good!: {:?}", path);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // TODO: run cleanup function (maybe run this first?), where every symlink in dest_dir is verified
+            }
+        }
+    }
 
     // - ensure each is symlink and points to src_path
 
@@ -204,7 +268,13 @@ fn handle_message(config: &Config, message: &Message) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn filename_matches_any_regex(filename: &str, regexes: &[Regex]) -> anyhow::Result<bool> {
+fn path_matches_any_regex(path: &Path, regexes: &[Regex]) -> anyhow::Result<bool> {
+    let filename = path
+        .file_name()
+        .with_context(|| format!("cannot get OsStr filename of path: {:?}", path))?
+        .to_str()
+        .with_context(|| format!("cannot convert OsStr to str for path: {:?}", path))?;
+
     Ok(regexes.iter().any(|r| r.is_match(filename)))
 }
 
@@ -244,19 +314,13 @@ fn ensure_symlink_and_expected_target(link_path: &Path, src_path: &Path) -> anyh
 ///
 /// If it matches, create a symlink to the appropriate dest dir.
 fn handle_path(config: &Config, src_path: &Path, message: &Message) -> anyhow::Result<()> {
-    let filename = src_path
-        .file_name()
-        .with_context(|| format!("cannot get OsStr filename of path: {:?}", src_path))?
-        .to_str()
-        .with_context(|| format!("cannot convert OsStr to str for path: {:?}", src_path))?;
-
     let rule = &config.rules[message.rule_idx];
     let watch = &rule.watch[message.watch_idx];
 
     let regexes = &rule.regex;
 
-    if filename_matches_any_regex(filename, regexes)? {
-        eprintln!("Regex matches! {:?}", filename);
+    if path_matches_any_regex(src_path, regexes)? {
+        eprintln!("Regex matches! {:?}", src_path);
 
         // For every dest_dir, check if the expected link_path has a symlink, and if not,
         // create one.

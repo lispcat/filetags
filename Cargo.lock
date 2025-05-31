@@ -226,6 +226,7 @@ dependencies = [
  "shellexpand",
  "smart-default",
  "tempfile",
+ "walkdir",
 ]
 
 [[package]]

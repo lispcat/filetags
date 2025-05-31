@@ -109,50 +109,66 @@ fn path_is_rec_subdir_of_any(path: &Path, many_dirs: &[PathBuf]) -> anyhow::Resu
 
 fn init_scan(config: &Arc<Config>) -> anyhow::Result<()> {
     // - walk throgh every dir path recursively with WalkDir...
+    // NOTE: BELOW IS LITERALLY just the cleanup function i was wanting to write...
+    // TODO: extract all this into a clean-up all dest_dirs function!
     for rule in &config.rules {
         for dest_dir in &rule.dest {
             for entry in WalkDir::new(dest_dir) {
                 let entry = entry?;
                 let path = entry.path();
 
-                match fs::symlink_metadata(path) {
-                    Err(e) => anyhow::bail!(
-                        "could not perform metadata call on path or path does not exist: {}",
-                        e
-                    ),
-                    Ok(metadata) => {
-                        // if is_symlink, do some checks. otherwise, ignore file
-                        if metadata.file_type().is_symlink() {
-                            // if path matches any regex, do checks
-                            if path_matches_any_regex(path, &rule.regex)
-                                .context("failed to match regexes")?
-                            {
-                                // TODO: check if symlink is broken
-                                if !is_symlink_valid(path)
-                                    .context("failed to check if valid symlink")?
-                                {
-                                    // symlink is broken, so delete this symlink!
-                                    eprintln!("Symlink is broken, so deleting symlink: {:?}", path);
-                                    fs::remove_file(path)?;
-                                }
-                                // TODO: is it a subdir of any of rule.watch (Vec<Path>)
-                                else if !path_is_rec_subdir_of_any(path, &rule.watch)? {
-                                    // is not a subdir of any watch dirs, so delete symlink?
-                                    eprintln!("Symlink is not a subdir of any watch dirs, so deleting symlink: {:?}", path);
-                                    fs::remove_file(path)?;
-                                } else {
-                                    // existing symlink looks good!!!
-                                    eprintln!("Existing symlink looks good!: {:?}", path);
-                                }
-                            }
-                        }
-                    }
+                // get file metadata
+                let metadata = fs::symlink_metadata(path).with_context(|| {
+                    format!(
+                        "could not perform metadata call on path or path does not exist: {:?}",
+                        path
+                    )
+                })?;
+
+                // skip this file if not a symlink
+                if !metadata.file_type().is_symlink() {
+                    eprintln!("This file is not a symlink, skip: {:?}", path);
+
+                    continue;
                 }
 
-                // TODO: run cleanup function (maybe run this first?), where every symlink in dest_dir is verified
+                // if file doesnt match any regex, it should't belong here... probably...
+                if !path_matches_any_regex(path, &rule.regex).context("failed to match regexes")? {
+                    eprintln!(
+                        "Symlink doesn't match any regex, so deleting symlink i guess: {:?}",
+                        path
+                    );
+                    fs::remove_file(path)?;
+
+                    continue;
+                }
+
+                // if symlink is broken, delete!
+                if !is_symlink_valid(path).context("failed to check if valid symlink")? {
+                    eprintln!("Symlink is broken, so deleting symlink: {:?}", path);
+                    fs::remove_file(path)?;
+
+                    continue;
+                }
+
+                // if symlink is not a subdir of any watch dir, delete
+                if !path_is_rec_subdir_of_any(path, &rule.watch)? {
+                    eprintln!(
+                        "Symlink is not a subdir of any watch dirs, so deleting symlink: {:?}",
+                        path
+                    );
+                    fs::remove_file(path)?;
+
+                    continue;
+                }
+
+                eprintln!("Existing symlink looks good!: {:?}", path);
             }
+            eprintln!("cleanup of dest_dir complete!: {:?}", dest_dir);
         }
+        eprintln!("cleanup of dest_dirs in rule complete!: {}", rule.name);
     }
+    eprintln!("cleanup of all rules complete!");
 
     // - ensure each is symlink and points to src_path
 

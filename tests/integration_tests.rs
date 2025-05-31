@@ -6,7 +6,6 @@ use std::{
     time::Duration,
 };
 
-use anyhow::Context;
 use filetags::{run_with_args, Args, Config, Rule};
 use regex::Regex;
 use tempfile::TempDir;

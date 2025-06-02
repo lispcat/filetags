@@ -1,4 +1,4 @@
-use std::{fs, sync::Arc, thread, time::Duration};
+use std::{fs, sync::Arc};
 
 use anyhow::Context;
 use channels::{setup_watchers, start_responder, symlinker::clean_all_dest};

@@ -1,7 +1,10 @@
 pub mod symlinker;
 pub mod watcher;
 
-use std::{sync::Arc, thread};
+use std::{
+    sync::Arc,
+    thread::{self, JoinHandle},
+};
 
 use anyhow::Context;
 use crossbeam_channel::{Receiver, Sender};
@@ -45,9 +48,12 @@ pub fn setup_watchers(config: &Arc<Config>, event_tx: &Sender<Message>) -> anyho
 // - clean_rule (rule_idx)
 // - clean_dest (rule_idx, dest_idx)
 // - shutdown
-pub fn start_responder(rx: Receiver<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
+pub fn start_responder(
+    rx: Receiver<Message>,
+    config: &Arc<Config>,
+) -> anyhow::Result<JoinHandle<anyhow::Result<()>>> {
     let config_arc = Arc::clone(config);
-    thread::spawn(move || -> anyhow::Result<()> {
+    let handle = thread::spawn(move || -> anyhow::Result<()> {
         loop {
             match rx.recv().context("Error received from thread!")? {
                 Message::Watch(event) => handle_event_message(&config_arc, &event)?,
@@ -57,5 +63,5 @@ pub fn start_responder(rx: Receiver<Message>, config: &Arc<Config>) -> anyhow::R
         Ok(())
     });
 
-    Ok(())
+    Ok(handle)
 }

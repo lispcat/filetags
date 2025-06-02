@@ -42,13 +42,17 @@ pub fn run_with_args(
     init_dirs(&config).context("failed to init dirs")?;
 
     // process one event at a time until process terminated
-    start_responder(message_rx, &config).context("failed to start responder")?;
+    let responder_handle =
+        start_responder(message_rx, &config).context("failed to start responder")?;
 
     // init scan
     init_scan(&config).context("failed to init scan")?;
 
     // setup all watchers
     setup_watchers(&config, &message_tx).context("failed to setup watchers")?;
+
+    // Block until responder thread completes
+    responder_handle.join().expect("failed to join thread")?;
 
     Ok(())
 }

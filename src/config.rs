@@ -82,8 +82,9 @@ pub struct Settings {
 /// This is to be used inside every Rule.
 ///
 /// The reason for the differentiation between `Settings` and `RuleSettings` is so that when
-/// `RuleSettings` has a field with no explicitly set default value, it searches the `Settings`
-/// struct.
+/// `RuleSettings` has a field with no explicitly set default value (None), it searches the
+/// `Settings` struct for a default instead. This fallback mechanism is implemented using the
+/// `get_setting` macro.
 ///
 #[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]

@@ -10,6 +10,10 @@ use watcher::start_watchers_for_each_watch_dir;
 
 use crate::Config;
 
+// TODO: enum variants
+// - Watcher
+// - Shutdown
+
 /// Message to be sent throgh the crossbeam_channel.
 #[derive(Clone, Debug)]
 pub struct Message {
@@ -29,6 +33,11 @@ pub fn setup_watchers(config: &Arc<Config>, event_tx: &Sender<Message>) -> anyho
 
 // TODO: make it so Message can be of multiple types, like cleanup dest_dir time,
 // so both cleanups and symlinking is handled through here synchronously.
+// TODO: Message types:
+// - maybe_symlink (rule_idx, watch_idx, event)
+// - clean_rule (rule_idx)
+// - clean_dest (rule_idx, dest_idx)
+// - shutdown
 pub fn start_responder(rx: Receiver<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
     let config_arc = Arc::clone(config);
     thread::spawn(move || -> anyhow::Result<()> {

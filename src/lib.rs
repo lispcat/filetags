@@ -27,20 +27,20 @@ pub fn run_with_args(args: Args) -> anyhow::Result<()> {
     let config = Arc::new(Config::new(&args)?);
     dbg!(&config);
 
-    // do some init checks and assurances
+    // do some init fs checks and assurances
     init_dirs(&config).context("failed to init dirs")?;
 
     // create channel
     let (event_tx, event_rx) = crossbeam_channel::unbounded::<Message>();
 
-    // process one event at a time in main until process terminated
+    // process one event at a time until process terminated
     start_responder(event_rx, &config).context("failed to start responder")?;
 
     // init scan
     init_scan(&config).context("failed to init scan")?;
 
     // setup all watchers
-    setup_watchers(&config, &event_tx)?;
+    setup_watchers(&config, &event_tx).context("failed to setup watchers")?;
 
     // disconnect from channel
     drop(event_tx);

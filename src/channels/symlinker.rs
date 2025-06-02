@@ -16,13 +16,13 @@ use crate::{
     Config,
 };
 
-use super::Message;
+use super::WatchEvent;
 
 /// Handle a `notify::Event` received from the crossbeam channel Receiver.
 ///
 /// When a file creation or filename modification `notify::Event` is received,
 /// run `handle_path` to check the filename and take action if needed.
-pub fn handle_message(config: &Config, message: &Message) -> anyhow::Result<()> {
+pub fn handle_event_message(config: &Config, message: &WatchEvent) -> anyhow::Result<()> {
     match message.event.kind {
         match_event_kinds!() => {
             for check_path in &message.event.paths {
@@ -37,7 +37,7 @@ pub fn handle_message(config: &Config, message: &Message) -> anyhow::Result<()> 
 /// Check if the filename of the path matches the specified Regex's, and take action if needed.
 ///
 /// If it matches, create a symlink to the appropriate dest dir.
-fn handle_path(config: &Config, src_path: &Path, message: &Message) -> anyhow::Result<()> {
+fn handle_path(config: &Config, src_path: &Path, message: &WatchEvent) -> anyhow::Result<()> {
     let rule = &config.rules[message.rule_idx];
     let watch = &rule.watch[message.watch_idx];
 

@@ -6,7 +6,7 @@ use notify::{
     Event, EventKind, RecursiveMode, Watcher,
 };
 
-use crate::{match_event_kinds, Config, Message};
+use crate::{channels::WatchEvent, match_event_kinds, Config, Message};
 
 /// For each watch dir, spawn a notify watcher, where every `notify::Event` the watcher creates
 /// is forwarded to its corresponding crossbeam channel Receiver from the calling function.
@@ -49,11 +49,11 @@ fn start_watcher(
         Ok(event) => match event.kind {
             // only send message if filename modification or file creation
             match_event_kinds!() => {
-                let new_message = Message {
+                let new_message = Message::Watch(WatchEvent {
                     rule_idx,
                     watch_idx,
                     event,
-                };
+                });
                 dbg!(&new_message);
                 match tx.send(new_message) {
                     Ok(_) => println!("Watcher sent message!"),

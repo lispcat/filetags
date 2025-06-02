@@ -6,7 +6,7 @@ use std::{
     time::Duration,
 };
 
-use filetags::{run_with_args, Args, Config, Rule};
+use filetags::{run_with_args, Args, Config, Message, Rule};
 use regex::Regex;
 use tempfile::TempDir;
 
@@ -97,7 +97,8 @@ fn run_env_test_1() -> anyhow::Result<()> {
     });
 
     // start the main process loop
-    run_with_args(args)?;
+    let (tx, rx) = crossbeam_channel::unbounded::<Message>();
+    run_with_args(args, tx, rx)?;
 
     Ok(())
 }

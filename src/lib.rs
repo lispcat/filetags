@@ -1,7 +1,8 @@
 use std::{fs, sync::Arc, thread, time::Duration};
 
 use anyhow::Context;
-use channels::{setup_watchers, start_responder, symlinker::clean_all_dest, Message};
+use channels::{setup_watchers, start_responder, symlinker::clean_all_dest};
+use crossbeam_channel::{Receiver, Sender};
 
 mod args;
 mod channels;
@@ -10,6 +11,7 @@ mod utils;
 
 // re-export
 pub use args::*;
+pub use channels::Message;
 pub use config::*;
 
 // TODO:
@@ -19,10 +21,19 @@ pub fn run() -> anyhow::Result<()> {
     let args = Args {
         config_path: "examples/config.yml".into(),
     };
-    run_with_args(args)
+    let (tx, rx) = crossbeam_channel::unbounded::<Message>();
+
+    run_with_args(args, tx, rx)?;
+
+    Ok(())
 }
 
-pub fn run_with_args(args: Args) -> anyhow::Result<()> {
+// TODO: make run_with_args require tx and rx channels
+pub fn run_with_args(
+    args: Args,
+    message_tx: Sender<Message>,
+    message_rx: Receiver<Message>,
+) -> anyhow::Result<()> {
     // create a Config from Args
     let config = Arc::new(Config::new(&args)?);
     dbg!(&config);
@@ -30,26 +41,16 @@ pub fn run_with_args(args: Args) -> anyhow::Result<()> {
     // do some init fs checks and assurances
     init_dirs(&config).context("failed to init dirs")?;
 
-    // create channel
-    let (event_tx, event_rx) = crossbeam_channel::unbounded::<Message>();
-
     // process one event at a time until process terminated
-    start_responder(event_rx, &config).context("failed to start responder")?;
+    start_responder(message_rx, &config).context("failed to start responder")?;
 
     // init scan
     init_scan(&config).context("failed to init scan")?;
 
     // setup all watchers
-    setup_watchers(&config, &event_tx).context("failed to setup watchers")?;
+    setup_watchers(&config, &message_tx).context("failed to setup watchers")?;
 
-    // disconnect from channel
-    drop(event_tx);
-
-    // Keep main alive
-    // TODO: implement a proper shutdown procedure (currently killing process)
-    loop {
-        thread::sleep(Duration::from_secs(1));
-    }
+    Ok(())
 }
 
 /// To be run at startup.

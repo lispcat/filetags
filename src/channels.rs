@@ -3,9 +3,10 @@ pub mod watcher;
 
 use std::{sync::Arc, thread};
 
+use anyhow::Context;
 use crossbeam_channel::{Receiver, Sender};
 use notify::Event;
-use symlinker::handle_message;
+use symlinker::handle_event_message;
 use watcher::start_watchers_for_each_watch_dir;
 
 use crate::Config;
@@ -16,7 +17,13 @@ use crate::Config;
 
 /// Message to be sent throgh the crossbeam_channel.
 #[derive(Clone, Debug)]
-pub struct Message {
+pub enum Message {
+    Watch(WatchEvent),
+    Shutdown,
+}
+
+#[derive(Clone, Debug)]
+pub struct WatchEvent {
     pub rule_idx: usize,
     pub watch_idx: usize,
     pub event: Event,
@@ -42,11 +49,12 @@ pub fn start_responder(rx: Receiver<Message>, config: &Arc<Config>) -> anyhow::R
     let config_arc = Arc::clone(config);
     thread::spawn(move || -> anyhow::Result<()> {
         loop {
-            match rx.recv() {
-                Ok(event) => handle_message(&config_arc, &event)?,
-                Err(e) => println!("ERROR received from thread: {:?}", e),
+            match rx.recv().context("Error received from thread!")? {
+                Message::Watch(event) => handle_event_message(&config_arc, &event)?,
+                Message::Shutdown => break,
             }
         }
+        Ok(())
     });
 
     Ok(())

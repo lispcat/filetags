@@ -9,19 +9,22 @@ use std::{
 use anyhow::Context;
 use crossbeam_channel::{Receiver, Sender};
 use notify::Event;
-use symlinker::handle_event_message;
+use symlinker::{clean_all_dest, handle_event_message};
 use watcher::start_watchers_for_each_watch_dir;
 
 use crate::Config;
 
-// TODO: enum variants
-// - Watcher
-// - Shutdown
+// TODO: enum variants?
+// - CleanRule
+// - CleanAll
+// - DebugPrint
+// - GetStatus
 
 /// Message to be sent throgh the crossbeam_channel.
 #[derive(Clone, Debug)]
 pub enum Message {
     Watch(WatchEvent),
+    CleanAll,
     Shutdown,
 }
 
@@ -33,21 +36,13 @@ pub struct WatchEvent {
 }
 
 /// Set up watchers for each watch_dir
-pub fn setup_watchers(config: &Arc<Config>, event_tx: &Sender<Message>) -> anyhow::Result<()> {
+pub fn setup_watchers(event_tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
     // start an async watcher for each watch_dir
     start_watchers_for_each_watch_dir(config, event_tx)?;
 
-    // return Receiver
     Ok(())
 }
 
-// TODO: make it so Message can be of multiple types, like cleanup dest_dir time,
-// so both cleanups and symlinking is handled through here synchronously.
-// TODO: Message types:
-// - maybe_symlink (rule_idx, watch_idx, event)
-// - clean_rule (rule_idx)
-// - clean_dest (rule_idx, dest_idx)
-// - shutdown
 pub fn start_responder(
     rx: Receiver<Message>,
     config: &Arc<Config>,
@@ -57,6 +52,9 @@ pub fn start_responder(
         loop {
             match rx.recv().context("Error received from thread!")? {
                 Message::Watch(event) => handle_event_message(&config_arc, &event)?,
+                Message::CleanAll => {
+                    clean_all_dest(&config_arc).context("failed to clean all dest")?
+                }
                 Message::Shutdown => break,
             }
         }

@@ -1,7 +1,7 @@
 use std::{fs, sync::Arc};
 
 use anyhow::Context;
-use channels::{setup_watchers, start_responder, symlinker::clean_all_dest};
+use channels::{setup_watchers, start_responder};
 use crossbeam_channel::{Receiver, Sender};
 
 mod args;
@@ -13,6 +13,7 @@ mod utils;
 pub use args::*;
 pub use channels::Message;
 pub use config::*;
+pub use utils::*;
 
 // TODO:
 // - prevent recursive searching when DestDir is within WatchDir or symlinking dirs.
@@ -21,21 +22,25 @@ pub fn run() -> anyhow::Result<()> {
     let args = Args {
         config_path: "examples/config.yml".into(),
     };
+
     let (tx, rx) = crossbeam_channel::unbounded::<Message>();
 
-    run_with_args(args, tx, rx)?;
+    run_with_args(args, tx, rx)
+}
 
-    Ok(())
+pub fn run_with_args(args: Args, tx: Sender<Message>, rx: Receiver<Message>) -> anyhow::Result<()> {
+    // create a Config from Args
+    let config = Arc::new(Config::new(&args)?);
+
+    run_with_config(config, tx, rx)
 }
 
 // TODO: make run_with_args require tx and rx channels
-pub fn run_with_args(
-    args: Args,
+pub fn run_with_config(
+    config: Arc<Config>,
     message_tx: Sender<Message>,
     message_rx: Receiver<Message>,
 ) -> anyhow::Result<()> {
-    // create a Config from Args
-    let config = Arc::new(Config::new(&args)?);
     dbg!(&config);
 
     // do some init fs checks and assurances
@@ -45,11 +50,23 @@ pub fn run_with_args(
     let responder_handle =
         start_responder(message_rx, &config).context("failed to start responder")?;
 
-    // init scan
-    init_scan(&config).context("failed to init scan")?;
+    // init clean
+    message_tx
+        .send(Message::CleanAll)
+        .context("failed to send message")?;
+
+    // TODO: start periodic cleaner
 
     // setup all watchers
-    setup_watchers(&config, &message_tx).context("failed to setup watchers")?;
+    setup_watchers(&message_tx, &config).context("failed to setup watchers")?;
+
+    // run test hook if test    }
+
+    if let Some(hook) = TEST_HOOK.get() {
+        println!("DEBUG: RUNNING HOOKS");
+        hook();
+        println!("DEBUG: RAN HOOKS");
+    }
 
     // Block until responder thread completes
     responder_handle.join().expect("failed to join thread")?;
@@ -81,11 +98,11 @@ fn init_dirs(config: &Config) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn init_scan(config: &Arc<Config>) -> anyhow::Result<()> {
-    // ensure that each symlink in dest_dir is valid and appropriate, delete if else
-    clean_all_dest(config).context("failed to clean all dest")?;
-    // - create symlinks as needed
-    // TODO
+// fn init_scan(config: &Arc<Config>) -> anyhow::Result<()> {
+//     // ensure that each symlink in dest_dir is valid and appropriate, delete if else
+//     clean_all_dest(config).context("failed to clean all dest")?;
+//     // - create symlinks as needed
+//     // TODO
 
-    Ok(())
-}
+//     Ok(())
+// }

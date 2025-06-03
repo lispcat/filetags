@@ -53,3 +53,12 @@ pub fn calc_dest_link_from_src_orig(
 
     Ok(link)
 }
+
+pub static TEST_HOOK: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>> = std::sync::OnceLock::new();
+
+pub fn set_test_hook<F>(hook: F)
+where
+    F: Fn() + Send + Sync + 'static,
+{
+    let _ = TEST_HOOK.set(Box::new(hook));
+}

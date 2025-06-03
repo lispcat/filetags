@@ -25,6 +25,21 @@ fn _serialize_config(at_path: &Path, config: Config) -> anyhow::Result<()> {
     Ok(())
 }
 
+macro_rules! let_paths {
+    (base = $base_dir:expr, $(($var:ident, $file:expr $(, create = $create:tt)? )),+ $(,)?) => {
+        $(
+            let $var = $base_dir.join($file);
+            $(
+                match $create {
+                    "file" => create_files!(&$var),
+                    "dir" => create_dirs!(&$var),
+                    _ => compile_error!(concat!("Invalid input: ", stringify!($create))),
+                }
+            )?
+        )+
+    };
+}
+
 macro_rules! create_dirs {
     ($($dir:expr),+) => {{
         $(
@@ -41,11 +56,9 @@ macro_rules! create_files {
     }};
 }
 
-macro_rules! let_paths {
-    (base = $base_dir:expr, $(($var:ident, $file:expr)),+ $(,)?) => {
-        $(
-            let $var = $base_dir.join($file);
-        )+
+macro_rules! create_tx_rx {
+    () => {
+        crossbeam_channel::unbounded::<Message>()
     };
 }
 
@@ -79,12 +92,6 @@ macro_rules! create_config {
     }
 }
 
-macro_rules! create_tx_rx {
-    () => {
-        crossbeam_channel::unbounded::<Message>()
-    };
-}
-
 #[test]
 fn run_env_test_1() -> anyhow::Result<()> {
     // create temp testing env
@@ -94,7 +101,7 @@ fn run_env_test_1() -> anyhow::Result<()> {
     let_paths!(
         base = root,
         (watch_dir, "watch_dir"),
-        (dest_dir, "dest_dir")
+        (dest_dir, "dest_dir"),
     );
     create_dirs!(&root, &watch_dir, &dest_dir);
 
@@ -103,26 +110,24 @@ fn run_env_test_1() -> anyhow::Result<()> {
         base = watch_dir,
         (file1, "_sample1.txt"),
         (file2, "sample2.txt"),
-        (file3, "sample3.txt")
+        (file2_renamed, "_sample2.txt"),
+        (file3, "sample3.txt"),
     );
     create_files!(&file1, &file2, &file3);
-
-    // for future reference...
-    let_paths!(base = watch_dir, (file2_renamed, "_sample2.txt"));
-
-    // define config
-    let config = create_config!(("test1", (watch_dir), (dest_dir), "^_.*"));
 
     // create channel
     let (tx, rx) = create_tx_rx!();
 
+    // define config
+    let config = create_config!(("test1", (watch_dir), (dest_dir), "^_.*"));
+
     // adding test hook
     let tx_clone = tx.clone();
     set_test_hook(move || {
-        match fs::rename(file2.clone(), file2_renamed.clone()) {
-            Ok(()) => println!("File renamed!"),
-            Err(e) => eprintln!("Failed to rename file: {}", e),
-        }
+        // rename file2 to file2_renamed
+        fs::rename(file2.clone(), file2_renamed.clone()).expect("failed to rename file");
+
+        // shutdown
         thread::sleep(Duration::from_millis(100));
         tx_clone
             .send(Message::Shutdown)

@@ -2,7 +2,7 @@ pub mod symlinker;
 pub mod watcher;
 
 use std::{
-    sync::Arc,
+    sync::{Arc, Barrier},
     thread::{self, JoinHandle},
 };
 
@@ -37,8 +37,22 @@ pub struct WatchEvent {
 
 /// Set up watchers for each watch_dir
 pub fn setup_watchers(event_tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
+    // set up barrier with total sum of watch dirs
+    let barrier = Arc::new(Barrier::new(
+        config
+            .rules
+            .iter()
+            .map(|rule| rule.watch.len())
+            .sum::<usize>()
+            + 1,
+    ));
+
     // start an async watcher for each watch_dir
-    start_watchers_for_each_watch_dir(config, event_tx)?;
+    start_watchers_for_each_watch_dir(config, event_tx, &barrier)?;
+
+    // pause execution untill all watchers started
+    barrier.wait();
+    eprintln!("BARRIER PASSED!");
 
     Ok(())
 }

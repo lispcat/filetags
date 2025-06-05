@@ -26,7 +26,10 @@ pub fn handle_event_message(config: &Config, message: &WatchEvent) -> anyhow::Re
     match message.event.kind {
         match_event_kinds!() => {
             for check_path in &message.event.paths {
-                handle_path(config, check_path, message).context("failed to handle path")?;
+                let rule_idx = message.rule_idx;
+                let watch_idx = message.watch_idx;
+                handle_path(config, check_path, rule_idx, watch_idx)
+                    .context("failed to handle path")?;
             }
         }
         _ => (),
@@ -37,10 +40,14 @@ pub fn handle_event_message(config: &Config, message: &WatchEvent) -> anyhow::Re
 /// Check if the filename of the path matches the specified Regex's, and take action if needed.
 ///
 /// If it matches, create a symlink to the appropriate dest dir.
-fn handle_path(config: &Config, src_path: &Path, message: &WatchEvent) -> anyhow::Result<()> {
-    let rule = &config.rules[message.rule_idx];
-    let watch = &rule.watch[message.watch_idx];
-
+fn handle_path(
+    config: &Config,
+    src_path: &Path,
+    rule_idx: usize,
+    watch_idx: usize,
+) -> anyhow::Result<()> {
+    let rule = &config.rules[rule_idx];
+    let watch = &rule.watch[watch_idx];
     let regexes = &rule.regex;
 
     if path_matches_any_regex(src_path, regexes)? {
@@ -68,6 +75,30 @@ fn handle_path(config: &Config, src_path: &Path, message: &WatchEvent) -> anyhow
             }
         }
     }
+
+    Ok(())
+}
+
+pub fn ensure_is_symlink_and_expected_target(
+    link_path: &Path,
+    src_path: &Path,
+) -> anyhow::Result<()> {
+    // something exists here, so ensure that the file at link_path is a symlink
+    let is_symlink = fs::symlink_metadata(link_path)?.file_type().is_symlink();
+    anyhow::ensure!(
+        is_symlink,
+        "Error: something already exists at link_path ({:?}) and it's not a symlink?!",
+        link_path
+    );
+
+    // ensure the existing symlink points to the src_path
+    let symlink_points_to_src = src_path == link_path;
+    anyhow::ensure!(
+        symlink_points_to_src,
+        "Error: existing symlink at link_path ({:?}) doesn't point to src_path ({:?})",
+        link_path,
+        src_path
+    );
 
     Ok(())
 }
@@ -133,29 +164,14 @@ pub fn clean_all_dest(config: &Arc<Config>) -> anyhow::Result<()> {
     }
     eprintln!("cleanup of all rules complete!");
 
-    Ok(())
-}
-
-pub fn ensure_is_symlink_and_expected_target(
-    link_path: &Path,
-    src_path: &Path,
-) -> anyhow::Result<()> {
-    // something exists here, so ensure that the file at link_path is a symlink
-    let is_symlink = fs::symlink_metadata(link_path)?.file_type().is_symlink();
-    anyhow::ensure!(
-        is_symlink,
-        "Error: something already exists at link_path ({:?}) and it's not a symlink?!",
-        link_path
-    );
-
-    // ensure the existing symlink points to the src_path
-    let symlink_points_to_src = src_path == link_path;
-    anyhow::ensure!(
-        symlink_points_to_src,
-        "Error: existing symlink at link_path ({:?}) doesn't point to src_path ({:?})",
-        link_path,
-        src_path
-    );
+    // TODO: do symlinks to all matching...
+    for (rule_idx, rule) in config.rules.iter().enumerate() {
+        for (watch_idx, watch) in rule.watch.iter().enumerate() {
+            for direntry in WalkDir::new(watch) {
+                handle_path(config, direntry.unwrap().path(), rule_idx, watch_idx)?;
+            }
+        }
+    }
 
     Ok(())
 }

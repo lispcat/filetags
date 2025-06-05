@@ -14,6 +14,8 @@ macro_rules! match_event_kinds {
 
 use regex::Regex;
 
+use crate::Message;
+
 pub fn is_symlink_valid(path: &Path) -> anyhow::Result<bool> {
     if let Ok(target_path) = fs::read_link(path) {
         if target_path.is_absolute() && fs::metadata(&target_path).is_ok() {
@@ -54,11 +56,9 @@ pub fn calc_dest_link_from_src_orig(
     Ok(link)
 }
 
-pub static TEST_HOOK: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>> = std::sync::OnceLock::new();
-
-pub fn set_test_hook<F>(hook: F)
-where
-    F: Fn() + Send + Sync + 'static,
-{
-    let _ = TEST_HOOK.set(Box::new(hook));
+pub fn send_shutdown(tx: &crossbeam_channel::Sender<Message>) {
+    // shutdown
+    tx.clone()
+        .send(Message::Shutdown)
+        .expect("failed to shutdown");
 }

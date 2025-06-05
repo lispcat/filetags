@@ -1,4 +1,8 @@
-use std::{sync::Arc, thread, time::Duration};
+use std::{
+    sync::{Arc, Barrier},
+    thread,
+    time::Duration,
+};
 
 use crossbeam_channel::{self, Sender};
 use notify::{
@@ -15,15 +19,17 @@ use crate::{channels::WatchEvent, match_event_kinds, Config, Message};
 pub fn start_watchers_for_each_watch_dir(
     config: &Arc<Config>,
     tx: &Sender<Message>,
+    barrier: &Arc<Barrier>,
 ) -> anyhow::Result<()> {
     // start watcher for each watch_dir
     for (rule_idx, rule) in config.rules.iter().enumerate() {
         for (watch_idx, _) in rule.watch.iter().enumerate() {
             let config_arc = Arc::clone(config);
             let tx_clone: Sender<Message> = tx.clone();
+            let barrier_clone = barrier.clone();
             // TODO: instead of simply cloning clone the sender and create a new instance of Message.
             thread::spawn(move || -> anyhow::Result<()> {
-                start_watcher(config_arc, rule_idx, watch_idx, tx_clone)
+                start_watcher(config_arc, rule_idx, watch_idx, tx_clone, barrier_clone)
             });
         }
     }
@@ -41,6 +47,7 @@ fn start_watcher(
     rule_idx: usize,
     watch_idx: usize,
     tx: Sender<Message>,
+    barrier: Arc<Barrier>,
 ) -> anyhow::Result<()> {
     let rule = &config.rules[rule_idx];
     let watch = &rule.watch[watch_idx];
@@ -70,6 +77,9 @@ fn start_watcher(
 
     println!("Starting watcher at: {:?}", watch);
     watcher.watch(watch, RecursiveMode::Recursive)?;
+
+    // watcher set up, increment barrier
+    barrier.wait();
 
     // Keep the watcher alive - it will send events via the closure
     loop {

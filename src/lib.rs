@@ -32,14 +32,15 @@ pub fn run_with_args(args: Args, tx: Sender<Message>, rx: Receiver<Message>) -> 
     // create a Config from Args
     let config = Arc::new(Config::new(&args)?);
 
-    run_with_config(config, tx, rx)
+    run_with_config(config, tx, rx, None::<fn()>)
 }
 
 // TODO: make run_with_args require tx and rx channels
-pub fn run_with_config(
+pub fn run_with_config<F: Fn() + Send + 'static>(
     config: Arc<Config>,
     message_tx: Sender<Message>,
     message_rx: Receiver<Message>,
+    test_hook: Option<F>,
 ) -> anyhow::Result<()> {
     dbg!(&config);
 
@@ -60,16 +61,17 @@ pub fn run_with_config(
     // setup all watchers
     setup_watchers(&message_tx, &config).context("failed to setup watchers")?;
 
-    // run test hook if test    }
-
-    if let Some(hook) = TEST_HOOK.get() {
-        println!("DEBUG: RUNNING HOOKS");
+    // maybe run test hook
+    if let Some(hook) = test_hook {
+        eprintln!("TESTS: RUNNING HOOKS");
         hook();
-        println!("DEBUG: RAN HOOKS");
+        eprintln!("TESTS: RAN HOOKS");
     }
 
     // Block until responder thread completes
-    responder_handle.join().expect("failed to join thread")?;
+    responder_handle
+        .join()
+        .expect("failed to join respender thread")?;
 
     Ok(())
 }

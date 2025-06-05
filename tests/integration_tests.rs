@@ -1,172 +1,205 @@
+mod common;
+
 use std::{
-    fs::{self, File},
-    io::Write,
-    path::{Path, PathBuf},
+    fs,
     sync::Arc,
     thread,
     time::Duration,
 };
 
-use filetags::{run_with_config, set_test_hook, Config, Message, Rule};
+use filetags::{run_with_config, send_shutdown, Config, Message, Rule};
 use regex::Regex;
-use tempfile::TempDir;
-use walkdir::WalkDir;
 
-fn create_test_env() -> (TempDir, PathBuf) {
-    let temp_dir = TempDir::new().expect("failed to create temp dir");
-    let test_path = temp_dir.path().to_path_buf();
-    (temp_dir, test_path)
-}
-
-fn _serialize_config(at_path: &Path, config: Config) -> anyhow::Result<()> {
-    let yml_string = serde_yml::to_string(&config)?;
-    let mut file = File::create(at_path)?;
-    file.write_all(yml_string.as_bytes())?;
-
-    Ok(())
-}
-
-macro_rules! let_paths {
-    (base = $base_dir:expr, $(( $var:ident, $file:expr $(, create = $create:tt)? )),+ $(,)?) => {
-        $(
-            let $var = $base_dir.join($file);
-            $(
-                match $create {
-                    "file" => create_files!(&$var),
-                    "dir" => create_dirs!(&$var),
-                    _ => compile_error!(concat!("Invalid input: ", stringify!($create))),
-                }
-            )?
-        )+
-    };
-}
-
-macro_rules! create_dirs {
-    ($($dir:expr),+) => {{
-        $(
-            fs::create_dir_all($dir.clone()).expect("failed to create dirs");
-        )+
-    }};
-}
-
-macro_rules! create_files {
-    ($($file:expr),+) => {{
-        $(
-            fs::File::create($file.clone()).expect("failed to create files");
-        )+
-    }};
-}
-
-macro_rules! create_symlinks {
-    ($(($target:expr, $link:expr)),+) => {{
-        $(
-            std::os::unix::fs::symlink($target.clone(), $link.clone()).expect("failed to symlink");
-        )+
-    }};
-}
-
-macro_rules! create_tx_rx {
-    () => {
-        crossbeam_channel::unbounded::<Message>()
-    };
-}
-
-macro_rules! create_config {
-    ( $(( $name:expr, $(($watch:expr))+, $(($dest:expr))+, $regex:tt )),+ $(,)? ) => {
-        Arc::new(Config {
-            rules: vec![
-                $(
-                    Rule {
-                        name: $name.into(),
-                        watch: vec![
-                            $(
-                                $watch.clone()
-                            )+
-                        ],
-                        dest: vec![
-                            $(
-                                $dest.clone()
-                            )+
-                        ],
-                        regex: vec![
-                            Regex::new($regex.clone())
-                            .expect("failed to create regex")
-                        ],
-                        ..Rule::default()
-                    }
-                )+
-            ],
-            ..Config::default()
-        })
-    }
-}
+use common::*;
 
 #[test]
-fn run_env_test_1() -> anyhow::Result<()> {
+fn basic1() {
     // init
     let (_, root) = create_test_env();
     let (tx, rx) = create_tx_rx!();
 
+    println!("DEBUGGGG: 1: {:?}", root);
+
     // create dirs
     let_paths!(
-        base = root,
-        (watch_dir, "watch_dir"),
-        (dest_dir, "dest_dir"),
+        (watch_dir = root / "watch_dir" : create = "dir"),
+        (dest_dir = root / "dest_dir"   : create = "dir"),
     );
-    create_dirs!(root, watch_dir, dest_dir);
 
     // create files
     let_paths!(
-        base = watch_dir,
         // expect no action
-        (file1, "file1.txt"),
-        // expect init scan to symlink
-        (file2, "_file2.txt"),
-        // expect test hook to symlink
-        (file3, "file3.txt"),
-        (file3_renamed, "_file3.txt"),
-        // expect init scan to take no action because already symlinked
-        (file4, "_file4.txt"),
-        // expect init scan to delete symlink since broken
-        (file5_no_file, "file5.txt"),
-    );
-    create_files!(file1, file2, file3, file4);
+        (file1 = watch_dir / "file1.txt"  : create = "f"),
 
-    let_paths!(
-        base = dest_dir,
-        (file4_symlink, "_file4.txt"),
-        (file5_broken_symlink, "_file5.txt"),
-    );
-    create_symlinks!(
-        (file4, file4_symlink),
-        (file5_no_file, file5_broken_symlink)
+        // expect init scan to symlink
+        (file2 = watch_dir / "_file2.txt" : create = "f"),
+
+        // test hook will rename
+        (file3 = watch_dir / "file3.txt"          : create = "f"),
+        (file3_renamed = watch_dir / "_file3.txt" : create = "no"),
+
+        // // test hook will create
+        (file4 = watch_dir / "_file4.txt" : create = "no")
     );
 
     // define config
-    let config = create_config!(("test1", (watch_dir), (dest_dir), "^_.*"));
+    let config = create_config!(("test", (watch_dir), (dest_dir), "^_.*"));
 
-    // test hook
-    set_test_hook({
-        let tx_clone = tx.clone();
-        let file3 = file3.clone();
-        let file3_renamed = file3_renamed.clone();
+    let test_hook = {
+        clone_vars!(tx, file3, file3_renamed, file4);
         move || {
-            // rename file3 to file3_renamed
-            fs::rename(file3.clone(), file3_renamed.clone()).expect("failed to rename file");
+            rename_file(&file3, &file3_renamed);
+            fs::File::create(&file4).expect("failed to create files");
 
-            // shutdown
             thread::sleep(Duration::from_millis(100));
-            tx_clone
-                .send(Message::Shutdown)
-                .expect("failed to shutdown");
+            send_shutdown(&tx);
         }
-    });
+    };
 
     // start the main process loop
-    run_with_config(config, tx, rx)?;
+    run_with_config(config, tx, rx, Some(test_hook)).expect("failed to run main");
 
-    // verify fs
-    // let file3_symlink = dest_dir.join(file3_renamed.file_name().unwrap());
-
-    Ok(())
+    // assertions
+    assert_cur_and_exp_trees_eq(
+        &root,
+        vec![
+            "dest_dir",
+            "dest_dir/_file2.txt",
+            "dest_dir/_file3.txt",
+            "dest_dir/_file4.txt",
+            "watch_dir",
+            "watch_dir/_file2.txt",
+            "watch_dir/_file3.txt",
+            "watch_dir/_file4.txt",
+            "watch_dir/file1.txt",
+        ],
+    );
 }
+
+#[test]
+fn basic2() {
+    // init
+    let (_, root) = create_test_env();
+    let (tx, rx) = create_tx_rx!();
+
+    println!("DEBUGGGG: 2: {:?}", root);
+
+    // create dirs
+    let_paths!(
+        (watch_dir = root / "watch_dir" : create = "dir"),
+        (dest_dir = root / "dest_dir"   : create = "dir"),
+    );
+
+    // create files
+    let_paths!(
+        // expect no action, because symlink already created
+        (file1 = watch_dir / "_file1.txt"        : create = "f"),
+        (file1_symlink = dest_dir / "_file1.txt" : create = "symlink" => file1),
+    );
+
+    // define config
+    let config = create_config!(("test", (watch_dir), (dest_dir), "^_.*"));
+
+    // define test hook
+    let test_hook = {
+        clone_vars!(tx);
+        move || {
+            thread::sleep(Duration::from_millis(100));
+            send_shutdown(&tx);
+        }
+    };
+
+    // start the main process loop
+    run_with_config(config, tx, rx, Some(test_hook)).expect("failed to run main");
+
+    // assertions
+    assert_cur_and_exp_trees_eq(
+        &root,
+        vec![
+            "dest_dir",
+            "dest_dir/_file1.txt",
+            "watch_dir",
+            "watch_dir/_file1.txt",
+        ],
+    );
+}
+
+// #[test]
+// fn run_env_test_1() -> anyhow::Result<()> {
+//     // init
+//     let (_, root) = create_test_env();
+//     let (tx, rx) = create_tx_rx!();
+
+//     // create dirs
+//     let_paths!(
+//         (watch_dir = root / "watch_dir" : create = "dir"),
+//         (dest_dir = root / "dest_dir"   : create = "dir"),
+//     );
+
+//     // create files
+//     let_paths!(
+//         // // expect no action
+//         // (file__untouched = watch_dir / "file1.txt"    : create = "f"),
+
+//         // // expect init scan to symlink
+//         // (file__init_scan = watch_dir / "_file2.txt" : create = "f"),
+
+//         // expect test hook to symlink
+//         (file_r = watch_dir / "file3.txt"   : create = "f"),
+//         (file_rn = watch_dir / "_file3.txt" : create = "no"),
+
+//         // // expect init scan to take no action
+//         // // because already symlinked
+//         // (file4 = watch_dir / "_file4.txt"         : create = "f"),
+//         // (file4_symlink = dest_dir / "_file4.txt"  : create = "symlink" => file4),
+//         // // expect init scan to delete symlink
+//         // // since broken
+//         // (file5_no_file = watch_dir / "file5.txt"        : create = "no"),
+//         // (file5_broken_symlink = dest_dir / "_file5.txt" : create = "symlink" => file5_no_file),
+//     );
+
+//     // define config
+//     let config = create_config!(("test", (watch_dir), (dest_dir), "^_.*"));
+
+//     // test hook
+//     set_test_hook({
+//         fn rename(tx: &crossbeam_channel::Sender<Message>, file3: &Path, file3_renamed: &Path) {
+//             // rename file3 to file3_renamed
+//             fs::rename(file3, file3_renamed).expect("failed to rename file");
+
+//             // shutdown
+//             thread::sleep(Duration::from_millis(100));
+//             tx.clone()
+//                 .send(Message::Shutdown)
+//                 .expect("failed to shutdown");
+//         }
+//         // TODO: create macro for cloning args first
+//         let tx_copy = tx.clone();
+//         let file_r_copy = file_r.clone();
+//         let file_rn_copy = file_rn.clone();
+//         move || rename(&tx_copy, &file_r_copy, &file_rn_copy)
+//     });
+
+//     // start the main process loop
+//     run_with_config(config, tx, rx)?;
+
+//     // print all files recursively
+//     WalkDir::new(root)
+//         .into_iter()
+//         .for_each(|e| println!("{}", e.unwrap().path().display()));
+
+//     // verify fs
+
+//     // // file1
+//     // assert!(file_control.exists());
+
+//     // // file2
+//     // assert!(file_init_scan.exists());
+//     // assert!(dest_dir.join(file_init_scan.file_name().unwrap()).exists());
+
+//     // // file_r
+//     // let file_rn_symlink = dest_dir.join(file_rn.file_name().unwrap());
+//     // assert!(file_rn_symlink.exists());
+
+//     Ok(())
+// }

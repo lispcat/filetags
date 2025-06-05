@@ -1,11 +1,6 @@
 mod common;
 
-use std::{
-    fs,
-    sync::Arc,
-    thread,
-    time::Duration,
-};
+use std::{fs, sync::Arc, thread, time::Duration};
 
 use filetags::{run_with_config, send_shutdown, Config, Message, Rule};
 use regex::Regex;
@@ -17,8 +12,6 @@ fn basic1() {
     // init
     let (_, root) = create_test_env();
     let (tx, rx) = create_tx_rx!();
-
-    println!("DEBUGGGG: 1: {:?}", root);
 
     // create dirs
     let_paths!(
@@ -81,8 +74,6 @@ fn basic2() {
     // init
     let (_, root) = create_test_env();
     let (tx, rx) = create_tx_rx!();
-
-    println!("DEBUGGGG: 2: {:?}", root);
 
     // create dirs
     let_paths!(

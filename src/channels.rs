@@ -3,19 +3,18 @@ pub mod symlinking;
 pub mod watcher;
 
 use std::{
-    path::{Path, PathBuf},
     sync::{Arc, Barrier},
     thread::{self, JoinHandle},
 };
 
 use anyhow::Context;
-use cleaning::{clean_all_dest, clean_dir};
+use cleaning::{clean_and_symlink_all, clean_dir};
 use crossbeam_channel::{Receiver, Sender};
 use notify::Event;
 use symlinking::handle_event_message;
 use watcher::start_watchers_for_each_watch_dir;
 
-use crate::{Config, Rule};
+use crate::Config;
 
 // TODO: enum variants?
 // - CleanRule
@@ -71,7 +70,7 @@ pub fn start_responder(
             match rx.recv().context("Error received from thread!")? {
                 Message::Watch(event) => handle_event_message(&config_arc, &event)?,
                 Message::CleanAll => {
-                    clean_all_dest(&config_arc).context("failed to clean all dest")?
+                    clean_and_symlink_all(&config_arc).context("failed to clean all dest")?
                 }
                 Message::CleanDir(rule_idx, dest_idx) => {
                     clean_dir(&config_arc, rule_idx, dest_idx)?

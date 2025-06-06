@@ -7,7 +7,7 @@ use notify::{
 };
 
 use crate::{
-    match_event_kinds,
+    match_event_kinds, symlink_target,
     utils::{calc_dest_link_from_src_orig, path_matches_any_regex},
     Config,
 };
@@ -88,13 +88,32 @@ pub fn ensure_is_symlink_and_expected_target(
     );
 
     // ensure the existing symlink points to the src_path
-    let symlink_points_to_src = src_path == link_path;
-    anyhow::ensure!(
-        symlink_points_to_src,
-        "Error: existing symlink at link_path ({:?}) doesn't point to src_path ({:?})",
-        link_path,
-        src_path
-    );
+    match symlink_target(link_path)? {
+        None => {
+            println!("Symlink is broken, deleting symlink: {:?}", link_path);
+            fs::remove_file(link_path)?;
+        }
+        Some(symlink_target) => {
+            if src_path != symlink_target {
+                println!(
+                    "ERROR: symlink at link_path ({:?}) doesn't point to src_path ({:?}), deleting symlink",
+                    link_path, src_path
+                );
+                fs::remove_file(link_path)?;
+            } else {
+                println!(
+                    "Symlink points to the correct source file! {:?}, {:?}, {:?}",
+                    src_path, symlink_target, link_path
+                );
+            }
+        }
+    };
+    // anyhow::ensure!(
+    //     symlink_points_to_src,
+    //     "Error: existing symlink at link_path ({:?}) doesn't point to src_path ({:?})",
+    //     link_path,
+    //     src_path
+    // );
 
     Ok(())
 }

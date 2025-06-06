@@ -88,7 +88,7 @@ fn basic2() {
         (file1_symlink = dest_dir / "_file1.txt" : create = "symlink" => file1),
 
         // broken symlink, delete at init
-        (file2_non_existent = watch_dir / "_file1.txt"  : create = "no"),
+        (file2_non_existent = watch_dir / "_file2.txt"  : create = "no"),
         (file2_broken_symlink = dest_dir / "_file2.txt" : create = "symlink" => file2_non_existent),
     );
 

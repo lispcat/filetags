@@ -1,7 +1,5 @@
 use std::{
-    fmt::Debug,
     fs,
-    path::Path,
     sync::{Arc, Barrier},
     thread,
     time::Duration,
@@ -12,10 +10,8 @@ use crossbeam_channel::Sender;
 use walkdir::WalkDir;
 
 use crate::{
-    channels::symlinking::handle_path,
-    get_setting,
-    utils::{is_symlink_valid, path_is_rec_subdir_of_any, path_matches_any_regex},
-    Config, Rule,
+    channels::symlinking::handle_path, get_setting, path_is_rec_subdir_of_any, symlink_target,
+    utils::path_matches_any_regex, Config,
 };
 
 use super::Message;
@@ -68,10 +64,8 @@ fn start_cleaner(
     barrier.wait();
     loop {
         let rule = &config.rules[rule_idx];
-        for (watch_idx, _watch) in rule.watch.iter().enumerate() {
-            // TODO: instead of directly cleaning, send an event message instead, to prevent race conditions!!!
-            // clean_dir(watch, &config.rules[rule_idx])?;
-            tx.send(Message::CleanDir(rule_idx, watch_idx))
+        for (dest_idx, _dest) in rule.dest.iter().enumerate() {
+            tx.send(Message::CleanDir(rule_idx, dest_idx))
                 .context("failed to send message for clean dir")?;
         }
 
@@ -81,9 +75,9 @@ fn start_cleaner(
 
 pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, dest_idx: usize) -> anyhow::Result<()> {
     let rule = &config.rules[rule_idx];
-    let dir = &rule.dest[dest_idx];
+    let dest_dir = &rule.dest[dest_idx];
 
-    for entry in WalkDir::new(dir) {
+    for entry in WalkDir::new(dest_dir) {
         let entry = entry?;
         let path = entry.path();
 
@@ -109,37 +103,50 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, dest_idx: usize) -> anyh
                 path
             );
             fs::remove_file(path)?;
-
             continue;
         }
 
         // if symlink is broken, delete!
-        if !is_symlink_valid(path).context("failed to check if valid symlink")? {
-            eprintln!("Symlink is broken, so deleting symlink: {:?}", path);
-            fs::remove_file(path)?;
+        let symlink_target =
+            match symlink_target(path).context("failed to check if valid symlink")? {
+                Some(p) => p,
+                None => {
+                    eprintln!("Symlink is broken, so deleting symlink: {:?}", path);
+                    fs::remove_file(path)?;
+                    continue;
+                }
+            };
 
+        // does symlink target exist?
+        if !symlink_target.exists() {
+            println!(
+                "Symlink target does not exist!!! {:?}, deleting symlink: {:?}",
+                symlink_target, path
+            );
+            fs::remove_file(path)?;
             continue;
         }
 
-        // if symlink is not a subdir of any watch dir, delete
-        if !path_is_rec_subdir_of_any(path, &rule.watch)? {
+        // if symlink target is not a subdir of any watch dir, delete symlink
+        if !path_is_rec_subdir_of_any(&symlink_target, &rule.watch)? {
             eprintln!(
-                "Symlink is not a subdir of any watch dirs, so deleting symlink: {:?}",
-                path
+                "Symlink target is not a subdir of any watch dirs, so deleting symlink: {:?}",
+                symlink_target,
             );
             fs::remove_file(path)?;
-
             continue;
+        } else {
+            // println!("OH WOW, symlink_target is a subdir of watch dirs!: {:?}, {:?}",);
         }
 
         eprintln!("Existing symlink looks good!: {:?}", path);
     }
-    eprintln!("cleanup of dest_dir complete!: {:?}", dir);
+    eprintln!("cleanup of dest_dir complete!: {:?}", dest_dir);
 
     Ok(())
 }
 
-pub fn clean_all_dest(config: &Arc<Config>) -> anyhow::Result<()> {
+pub fn clean_and_symlink_all(config: &Arc<Config>) -> anyhow::Result<()> {
     // - walk throgh every dir path recursively with WalkDir...
     for (rule_idx, rule) in config.rules.iter().enumerate() {
         for (dest_idx, _dest) in rule.dest.iter().enumerate() {

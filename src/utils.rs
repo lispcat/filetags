@@ -16,19 +16,19 @@ use regex::Regex;
 
 use crate::Message;
 
-pub fn is_symlink_valid(path: &Path) -> anyhow::Result<bool> {
+pub fn symlink_target(path: &Path) -> anyhow::Result<Option<PathBuf>> {
     if let Ok(target_path) = fs::read_link(path) {
         if target_path.is_absolute() && fs::metadata(&target_path).is_ok() {
-            return Ok(true);
+            return Ok(Some(target_path));
         }
         let dirname = path.parent().unwrap_or_else(|| Path::new(""));
         let resolved = dirname.join(&target_path);
         if fs::metadata(resolved).is_ok() {
-            return Ok(true);
+            return Ok(Some(target_path));
         }
     }
     eprintln!("Symlink is broken: {:?}", path);
-    Ok(false)
+    Ok(None)
 }
 
 pub fn path_is_rec_subdir_of_any(path: &Path, many_dirs: &[PathBuf]) -> anyhow::Result<bool> {

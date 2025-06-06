@@ -1,7 +1,7 @@
-use std::{fs, sync::Arc, thread, time::Duration};
+use std::{fs, sync::Arc};
 
 use anyhow::Context;
-use channels::{start_responder, start_watchers};
+use channels::{cleaning::start_cleaners, start_responder, start_watchers};
 use crossbeam_channel::{Receiver, Sender};
 
 mod args;
@@ -56,19 +56,8 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
         .send(Message::CleanAll)
         .context("failed to send message")?;
 
-    // TODO: start periodic cleaner
-    // start_periodic_cleaner(&message_tx, &config).context("failed to start periodic cleaner")?;
-    // thread::spawn({
-    //     let tx = message_tx.clone();
-    //     move || -> anyhow::Result<()> {
-    //         println!("starting periodic scanner");
-    //         loop {
-    //             tx.send(Message::CleanAll)
-    //                 .context("failed to send message")?;
-    //             thread::sleep(Duration::from_secs(3));
-    //         }
-    //     }
-    // });
+    // start all cleaners
+    start_cleaners(&message_tx, &config).context("failed to start cleaners")?;
 
     // setup all watchers
     start_watchers(&message_tx, &config).context("failed to setup watchers")?;

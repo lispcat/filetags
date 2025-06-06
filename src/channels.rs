@@ -1,18 +1,21 @@
-pub mod symlinker;
+pub mod cleaning;
+pub mod symlinking;
 pub mod watcher;
 
 use std::{
+    path::{Path, PathBuf},
     sync::{Arc, Barrier},
     thread::{self, JoinHandle},
 };
 
 use anyhow::Context;
+use cleaning::{clean_all_dest, clean_dir};
 use crossbeam_channel::{Receiver, Sender};
 use notify::Event;
-use symlinker::{clean_all_dest, handle_event_message};
+use symlinking::handle_event_message;
 use watcher::start_watchers_for_each_watch_dir;
 
-use crate::Config;
+use crate::{Config, Rule};
 
 // TODO: enum variants?
 // - CleanRule
@@ -24,6 +27,7 @@ use crate::Config;
 #[derive(Clone, Debug)]
 pub enum Message {
     Watch(WatchEvent),
+    CleanDir(usize, usize),
     CleanAll,
     Shutdown,
 }
@@ -36,7 +40,7 @@ pub struct WatchEvent {
 }
 
 /// Set up watchers for each watch_dir
-pub fn setup_watchers(event_tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
+pub fn start_watchers(event_tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
     // set up barrier with total sum of watch dirs
     let barrier = Arc::new(Barrier::new(
         config
@@ -68,6 +72,9 @@ pub fn start_responder(
                 Message::Watch(event) => handle_event_message(&config_arc, &event)?,
                 Message::CleanAll => {
                     clean_all_dest(&config_arc).context("failed to clean all dest")?
+                }
+                Message::CleanDir(rule_idx, dest_idx) => {
+                    clean_dir(&config_arc, rule_idx, dest_idx)?
                 }
                 Message::Shutdown => break,
             }

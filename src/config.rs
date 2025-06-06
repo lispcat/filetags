@@ -74,6 +74,9 @@ pub struct Settings {
 
     #[default(false)]
     pub follow_symlinks: bool,
+
+    #[default(Some(10))]
+    pub clean_interval: Option<u32>,
 }
 
 /// A copy of the `Settings` struct except that every field is wrapped in an `Option<T>` and
@@ -97,6 +100,7 @@ pub struct RuleSettings {
     pub exclude_pattern: Option<Vec<Regex>>,
     pub max_depth: Option<u32>,
     pub follow_symlinks: Option<bool>,
+    pub clean_interval: Option<Option<u32>>,
 }
 
 fn custom_serializer_option_vec_regex<S>(

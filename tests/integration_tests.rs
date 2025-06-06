@@ -86,6 +86,10 @@ fn basic2() {
         // expect no action, because symlink already created
         (file1 = watch_dir / "_file1.txt"        : create = "f"),
         (file1_symlink = dest_dir / "_file1.txt" : create = "symlink" => file1),
+
+        // broken symlink, delete at init
+        (file2_non_existent = watch_dir / "_file1.txt"  : create = "no"),
+        (file2_broken_symlink = dest_dir / "_file2.txt" : create = "symlink" => file2_non_existent),
     );
 
     // define config

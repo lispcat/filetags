@@ -1,18 +1,14 @@
-use std::{fs, os::unix::fs::symlink, path::Path, sync::Arc};
+use std::{fs, os::unix::fs::symlink, path::Path};
 
 use anyhow::Context;
 use notify::{
     event::{ModifyKind, RenameMode},
     EventKind,
 };
-use walkdir::WalkDir;
 
 use crate::{
     match_event_kinds,
-    utils::{
-        calc_dest_link_from_src_orig, is_symlink_valid, path_is_rec_subdir_of_any,
-        path_matches_any_regex,
-    },
+    utils::{calc_dest_link_from_src_orig, path_matches_any_regex},
     Config,
 };
 
@@ -40,7 +36,7 @@ pub fn handle_event_message(config: &Config, message: &WatchEvent) -> anyhow::Re
 /// Check if the filename of the path matches the specified Regex's, and take action if needed.
 ///
 /// If it matches, create a symlink to the appropriate dest dir.
-fn handle_path(
+pub fn handle_path(
     config: &Config,
     src_path: &Path,
     rule_idx: usize,
@@ -99,79 +95,6 @@ pub fn ensure_is_symlink_and_expected_target(
         link_path,
         src_path
     );
-
-    Ok(())
-}
-
-pub fn clean_all_dest(config: &Arc<Config>) -> anyhow::Result<()> {
-    // - walk throgh every dir path recursively with WalkDir...
-    for rule in &config.rules {
-        for dest_dir in &rule.dest {
-            for entry in WalkDir::new(dest_dir) {
-                let entry = entry?;
-                let path = entry.path();
-
-                // get file metadata
-                let metadata = fs::symlink_metadata(path).with_context(|| {
-                    format!(
-                        "could not perform metadata call on path or path does not exist: {:?}",
-                        path
-                    )
-                })?;
-
-                // skip this file if not a symlink
-                if !metadata.file_type().is_symlink() {
-                    eprintln!("This file is not a symlink, skip: {:?}", path);
-
-                    continue;
-                }
-
-                // if file doesnt match any regex, it should't belong here... probably...
-                if !path_matches_any_regex(path, &rule.regex).context("failed to match regexes")? {
-                    eprintln!(
-                        "Symlink doesn't match any regex, so deleting symlink i guess: {:?}",
-                        path
-                    );
-                    fs::remove_file(path)?;
-
-                    continue;
-                }
-
-                // if symlink is broken, delete!
-                if !is_symlink_valid(path).context("failed to check if valid symlink")? {
-                    eprintln!("Symlink is broken, so deleting symlink: {:?}", path);
-                    fs::remove_file(path)?;
-
-                    continue;
-                }
-
-                // if symlink is not a subdir of any watch dir, delete
-                if !path_is_rec_subdir_of_any(path, &rule.watch)? {
-                    eprintln!(
-                        "Symlink is not a subdir of any watch dirs, so deleting symlink: {:?}",
-                        path
-                    );
-                    fs::remove_file(path)?;
-
-                    continue;
-                }
-
-                eprintln!("Existing symlink looks good!: {:?}", path);
-            }
-            eprintln!("cleanup of dest_dir complete!: {:?}", dest_dir);
-        }
-        eprintln!("cleanup of dest_dirs in rule complete!: {}", rule.name);
-    }
-    eprintln!("cleanup of all rules complete!");
-
-    // TODO: do symlinks to all matching...
-    for (rule_idx, rule) in config.rules.iter().enumerate() {
-        for (watch_idx, watch) in rule.watch.iter().enumerate() {
-            for direntry in WalkDir::new(watch) {
-                handle_path(config, direntry.unwrap().path(), rule_idx, watch_idx)?;
-            }
-        }
-    }
 
     Ok(())
 }

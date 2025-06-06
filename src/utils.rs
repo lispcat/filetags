@@ -58,7 +58,5 @@ pub fn calc_dest_link_from_src_orig(
 
 pub fn send_shutdown(tx: &crossbeam_channel::Sender<Message>) {
     // shutdown
-    tx.clone()
-        .send(Message::Shutdown)
-        .expect("failed to shutdown");
+    let _ = tx.clone().send(Message::Shutdown);
 }

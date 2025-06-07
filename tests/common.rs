@@ -8,6 +8,7 @@ use std::{
 use filetags::Config;
 use itertools::Itertools;
 use tempfile::TempDir;
+use tracing::debug;
 use walkdir::WalkDir;
 
 pub fn create_test_env() -> (TempDir, PathBuf) {
@@ -149,10 +150,10 @@ pub fn sort_hashset(set: &HashSet<PathBuf>) -> Vec<&PathBuf> {
 
 pub fn assert_cur_and_exp_trees_eq(root: &Path, paths: Vec<&str>) {
     let tree = collect_tree(root);
-    dbg!(sort_hashset(&tree));
+    debug!("Sorted hashset real: {:?}", sort_hashset(&tree));
 
     let expected_tree = create_exp_tree(paths);
-    dbg!(sort_hashset(&expected_tree));
+    debug!("Sorted hashset expe: {:?}", sort_hashset(&expected_tree));
 
     assert_eq!(tree, expected_tree);
 }

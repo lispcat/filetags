@@ -9,6 +9,7 @@ use notify::{
     event::{ModifyKind, RenameMode},
     Event, EventKind, RecursiveMode, Watcher,
 };
+use tracing::debug;
 
 use crate::{channels::WatchEvent, match_event_kinds, Config, Message};
 
@@ -61,21 +62,20 @@ fn start_watcher(
                     watch_idx,
                     event,
                 });
-                dbg!(&new_message);
                 match tx.send(new_message) {
-                    Ok(_) => println!("Watcher sent message!"),
-                    Err(e) => println!("WATCHER FAILED TO SEND MESSAGE: {:?}", e),
+                    Ok(_) => debug!("Watcher sent message!"),
+                    Err(e) => debug!("WATCHER FAILED TO SEND MESSAGE: {:?}", e),
                 }
             }
             // for all other events do nothing
             _ => (),
         },
         Err(e) => {
-            println!("Watch Error! {}", e);
+            debug!("Watch Error! {}", e);
         }
     })?;
 
-    println!("Starting watcher at: {:?}", watch);
+    debug!("Starting watcher at: {:?}", watch);
     watcher.watch(watch, RecursiveMode::Recursive)?;
 
     // watcher set up, increment barrier

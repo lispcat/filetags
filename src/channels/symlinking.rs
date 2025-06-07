@@ -5,6 +5,7 @@ use notify::{
     event::{ModifyKind, RenameMode},
     EventKind,
 };
+use tracing::debug;
 
 use crate::{
     match_event_kinds, symlink_target,
@@ -47,7 +48,7 @@ pub fn handle_path(
     let regexes = &rule.regex;
 
     if path_matches_any_regex(src_path, regexes)? {
-        eprintln!("Regex matches! {:?}", src_path);
+        debug!("Regex matches! {:?}", src_path);
 
         // For every dest_dir, check if the expected link_path has a symlink, and if not,
         // create one.
@@ -90,18 +91,18 @@ pub fn ensure_is_symlink_and_expected_target(
     // ensure the existing symlink points to the src_path
     match symlink_target(link_path)? {
         None => {
-            println!("Symlink is broken, deleting symlink: {:?}", link_path);
+            debug!("Symlink is broken, deleting symlink: {:?}", link_path);
             fs::remove_file(link_path)?;
         }
         Some(symlink_target) => {
             if src_path != symlink_target {
-                println!(
+                debug!(
                     "ERROR: symlink at link_path ({:?}) doesn't point to src_path ({:?}), deleting symlink",
                     link_path, src_path
                 );
                 fs::remove_file(link_path)?;
             } else {
-                println!(
+                debug!(
                     "Symlink points to the correct source file! {:?}, {:?}, {:?}",
                     src_path, symlink_target, link_path
                 );

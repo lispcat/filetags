@@ -15,6 +15,7 @@ pub use args::*;
 pub use channels::Message;
 pub use config::*;
 pub use logger::*;
+use tracing::{debug, info_span};
 pub use utils::*;
 
 // TODO:
@@ -33,7 +34,9 @@ pub fn run() -> anyhow::Result<()> {
 pub fn run_with_args(args: Args, tx: Sender<Message>, rx: Receiver<Message>) -> anyhow::Result<()> {
     // create a Config from Args
     let config = Arc::new(Config::new(&args)?);
+    let _logger = Logger::new();
 
+    let _span = info_span!("Run").entered();
     run_with_config(config, tx, rx, None::<fn()>)
 }
 
@@ -44,7 +47,7 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     message_rx: Receiver<Message>,
     test_hook: Option<F>,
 ) -> anyhow::Result<()> {
-    dbg!(&config);
+    debug!("The Config: {:?}", config);
 
     // do some init fs checks and assurances
     init_dirs(&config).context("failed to init dirs")?;
@@ -66,9 +69,9 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
 
     // maybe run test hook
     if let Some(hook) = test_hook {
-        eprintln!("TESTS: RUNNING HOOKS");
+        debug!("RUNNING HOOKS");
         hook();
-        eprintln!("TESTS: RAN HOOKS");
+        debug!("RAN HOOKS");
     }
 
     // Block until responder thread completes
@@ -85,15 +88,15 @@ fn init_dirs(config: &Config) -> anyhow::Result<()> {
     for rule in &config.rules {
         for path in &rule.watch {
             if path.try_exists()? {
-                println!("Path to watch found: {:?}", path);
+                debug!("Path to watch found: {:?}", path)
             } else {
                 println!("Path NOT found: {:?}", path);
                 if get_setting!(config, rule, create_missing_directories) {
-                    println!("Creating directory at: {:?}", path);
+                    debug!("Creating directory at: {:?}", path);
                     fs::create_dir_all(path).with_context(|| {
                         format!("failed to create symlink directory: {:?}", path)
                     })?;
-                    println!("Created path at: {:?}", path);
+                    debug!("Created path at: {:?}", path);
                 } else {
                     anyhow::bail!("path does not exist! terminating...");
                 }

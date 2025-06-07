@@ -12,6 +12,7 @@ use cleaning::{clean_and_symlink_all, clean_dir};
 use crossbeam_channel::{Receiver, Sender};
 use notify::Event;
 use symlinking::handle_event_message;
+use tracing::debug;
 use watcher::start_watchers_for_each_watch_dir;
 
 use crate::Config;
@@ -55,7 +56,7 @@ pub fn start_watchers(event_tx: &Sender<Message>, config: &Arc<Config>) -> anyho
 
     // pause execution untill all watchers started
     barrier.wait();
-    eprintln!("BARRIER PASSED!");
+    debug!("BARRIER PASSED!");
 
     Ok(())
 }

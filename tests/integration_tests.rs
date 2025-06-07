@@ -6,7 +6,7 @@ use filetags::{run_with_config, send_shutdown, Config, Logger, Message, Rule};
 use regex::Regex;
 
 use common::*;
-use tracing::{info, warn};
+use tracing::{info, info_span, warn};
 
 #[test]
 fn logging_wip() {
@@ -21,6 +21,8 @@ fn basic1() {
     // init
     let (_, root) = create_test_env();
     let (tx, rx) = create_tx_rx!();
+    let _logger = Logger::new();
+    let _span = info_span!("T_basic1").entered();
 
     // create dirs
     let_paths!(
@@ -85,6 +87,8 @@ fn basic2() {
     // init
     let (_, root) = create_test_env();
     let (tx, rx) = create_tx_rx!();
+    let _logger = Logger::new();
+    let _span = info_span!("T_basic2").entered();
 
     // create dirs
     let_paths!(

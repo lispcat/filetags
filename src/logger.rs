@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use tracing::Subscriber;
+use tracing::{debug, Subscriber};
 use tracing_subscriber::{
     layer::{Context, Layered},
     prelude::*,
@@ -40,7 +40,7 @@ impl FieldVisitor {
 
 impl tracing::field::Visit for FieldVisitor {
     fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        println!("TODO: Not yet implemented!");
+        debug!("TODO: Not yet implemented!");
     }
 }
 

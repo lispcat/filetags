@@ -13,6 +13,7 @@ macro_rules! match_event_kinds {
 }
 
 use regex::Regex;
+use tracing::debug;
 
 use crate::Message;
 
@@ -27,7 +28,7 @@ pub fn symlink_target(path: &Path) -> anyhow::Result<Option<PathBuf>> {
             return Ok(Some(target_path));
         }
     }
-    eprintln!("Symlink is broken: {:?}", path);
+    debug!("Symlink is broken: {:?}", path);
     Ok(None)
 }
 

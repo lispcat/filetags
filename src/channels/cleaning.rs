@@ -7,6 +7,7 @@ use std::{
 
 use anyhow::Context;
 use crossbeam_channel::Sender;
+use tracing::debug;
 use walkdir::WalkDir;
 
 use crate::{
@@ -25,7 +26,7 @@ pub fn start_cleaners(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Res
 
     // pause execution until all cleaners started
     barrier.wait();
-    eprintln!("Cleaner Barrier passed!");
+    debug!("Cleaner Barrier passed!");
 
     Ok(())
 }
@@ -91,14 +92,14 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, dest_idx: usize) -> anyh
 
         // skip this file if not a symlink
         if !metadata.file_type().is_symlink() {
-            eprintln!("This file is not a symlink, skip: {:?}", path);
+            debug!("This file is not a symlink, skip: {:?}", path);
 
             continue;
         }
 
         // if file doesnt match any regex, it should't belong here... probably...
         if !path_matches_any_regex(path, &rule.regex).context("failed to match regexes")? {
-            eprintln!(
+            debug!(
                 "Symlink doesn't match any regex, so deleting symlink i guess: {:?}",
                 path
             );
@@ -111,7 +112,7 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, dest_idx: usize) -> anyh
             match symlink_target(path).context("failed to check if valid symlink")? {
                 Some(p) => p,
                 None => {
-                    eprintln!("Symlink is broken, so deleting symlink: {:?}", path);
+                    debug!("Symlink is broken, so deleting symlink: {:?}", path);
                     fs::remove_file(path)?;
                     continue;
                 }
@@ -119,7 +120,7 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, dest_idx: usize) -> anyh
 
         // does symlink target exist?
         if !symlink_target.exists() {
-            println!(
+            debug!(
                 "Symlink target does not exist!!! {:?}, deleting symlink: {:?}",
                 symlink_target, path
             );
@@ -129,19 +130,19 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, dest_idx: usize) -> anyh
 
         // if symlink target is not a subdir of any watch dir, delete symlink
         if !path_is_rec_subdir_of_any(&symlink_target, &rule.watch)? {
-            eprintln!(
+            debug!(
                 "Symlink target is not a subdir of any watch dirs, so deleting symlink: {:?}",
                 symlink_target,
             );
             fs::remove_file(path)?;
             continue;
         } else {
-            // println!("OH WOW, symlink_target is a subdir of watch dirs!: {:?}, {:?}",);
+            // debug!("OH WOW, symlink_target is a subdir of watch dirs!: {:?}, {:?}",);
         }
 
-        eprintln!("Existing symlink looks good!: {:?}", path);
+        debug!("Existing symlink looks good!: {:?}", path);
     }
-    eprintln!("cleanup of dest_dir complete!: {:?}", dest_dir);
+    debug!("cleanup of dest_dir complete!: {:?}", dest_dir);
 
     Ok(())
 }
@@ -152,9 +153,9 @@ pub fn clean_and_symlink_all(config: &Arc<Config>) -> anyhow::Result<()> {
         for (dest_idx, _dest) in rule.dest.iter().enumerate() {
             clean_dir(config, rule_idx, dest_idx)?;
         }
-        eprintln!("cleanup of dest_dirs in rule complete!: {}", rule.name);
+        debug!("cleanup of dest_dirs in rule complete!: {}", rule.name);
     }
-    eprintln!("cleanup of all rules complete!");
+    debug!("cleanup of all rules complete!");
 
     // TODO: do symlinks to all matching...
     for (rule_idx, rule) in config.rules.iter().enumerate() {

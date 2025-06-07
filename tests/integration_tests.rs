@@ -2,10 +2,19 @@ mod common;
 
 use std::{fs, sync::Arc, thread, time::Duration};
 
-use filetags::{run_with_config, send_shutdown, Config, Message, Rule};
+use filetags::{run_with_config, send_shutdown, Config, Logger, Message, Rule};
 use regex::Regex;
 
 use common::*;
+use tracing::{info, warn};
+
+#[test]
+fn logging_wip() {
+    let logger = Logger::new();
+
+    info!("This is an info message!");
+    warn!("This is a warn message!");
+}
 
 #[test]
 fn basic1() {
@@ -68,6 +77,8 @@ fn basic1() {
         ],
     );
 }
+
+// TODO: make this into a bunch of tinier integ tests, where there's only one file per test (use a macro for templating this whole thing!!!!! and make like, 10 basic tests!)
 
 #[test]
 fn basic2() {

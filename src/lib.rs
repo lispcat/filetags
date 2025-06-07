@@ -7,12 +7,14 @@ use crossbeam_channel::{Receiver, Sender};
 mod args;
 mod channels;
 mod config;
+mod logger;
 mod utils;
 
 // re-export
 pub use args::*;
 pub use channels::Message;
 pub use config::*;
+pub use logger::*;
 pub use utils::*;
 
 // TODO:

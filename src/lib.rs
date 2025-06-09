@@ -19,7 +19,7 @@ pub use logger::*;
 pub use utils::*;
 
 // TODO:
-// - prevent recursive searching when DestDir is within WatchDir or symlinking dirs.
+// - prevent recursive searching when LinkDir is within WatchDir or symlinking dirs.
 
 pub fn run() -> anyhow::Result<()> {
     let args = Args {
@@ -87,7 +87,7 @@ fn init_fs(config: &Config) -> anyhow::Result<()> {
     let _span = enter_span!(INFO, "init_dirs");
 
     for rule in &config.rules {
-        for path in &rule.watch {
+        for path in &rule.watch_dirs {
             if path.try_exists()? {
                 debug!(?path, "Path to watch found");
             } else {
@@ -107,7 +107,7 @@ fn init_fs(config: &Config) -> anyhow::Result<()> {
 }
 
 // fn init_scan(config: &Arc<Config>) -> anyhow::Result<()> {
-//     // ensure that each symlink in dest_dir is valid and appropriate, delete if else
+//     // ensure that each symlink in link_dir is valid and appropriate, delete if else
 //     clean_all_dest(config).context("failed to clean all dest")?;
 //     // - create symlinks as needed
 //     // TODO

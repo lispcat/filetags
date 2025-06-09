@@ -11,7 +11,7 @@ use crate::args::Args;
 /// The settings field specifies a set of defaults for all rules.
 /// The rules field specifies a list of rules.
 ///
-#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub settings: Settings,
@@ -28,13 +28,14 @@ impl Config {
     }
 }
 
-/// Each Rule most notably has a `watch` and `dest` field, where `watch` is a list of directories
-/// to look for filename cookies for, and `dest` is a list of directories to create symlinks to.
+/// Each Rule most notably has a `watch_dirs` and `link_dirs` field, where `watch_dirs` is a list
+/// of directories to look for filename cookies for, and `link_dirs` is a list of directories to
+/// create symlinks to.
 ///
 /// The `settings` field specifies overrides to the global default settings set in the
 /// Config struct.
 ///
-#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Rule {
     #[default("rule")]
@@ -42,11 +43,11 @@ pub struct Rule {
 
     #[default(vec![])]
     #[serde(deserialize_with = "expand_paths")]
-    pub watch: Vec<PathBuf>,
+    pub watch_dirs: Vec<PathBuf>,
 
     #[default(vec![])]
     #[serde(deserialize_with = "expand_paths")]
-    pub dest: Vec<PathBuf>,
+    pub link_dirs: Vec<PathBuf>,
 
     #[default(vec![])]
     #[serde(with = "serde_regex")]
@@ -59,7 +60,7 @@ pub struct Rule {
 ///
 /// Overrides on a per-Rule basis can be done in each instance of `RuleSettings` in each Rule.
 ///
-#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Settings {
     #[default(true)]
@@ -89,35 +90,32 @@ pub struct Settings {
 /// `Settings` struct for a default instead. This fallback mechanism is implemented using the
 /// `get_setting` macro.
 ///
-#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RuleSettings {
     pub create_missing_directories: Option<bool>,
-    #[serde(
-        deserialize_with = "serde_regex::deserialize",
-        serialize_with = "custom_serializer_option_vec_regex"
-    )]
+    #[serde(deserialize_with = "serde_regex::deserialize")]
     pub exclude_pattern: Option<Vec<Regex>>,
     pub max_depth: Option<u32>,
     pub follow_symlinks: Option<bool>,
     pub clean_interval: Option<Option<u32>>,
 }
 
-fn custom_serializer_option_vec_regex<S>(
-    value: &Option<Vec<Regex>>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    match value {
-        Some(regexes) => {
-            let strings: Vec<String> = regexes.iter().map(|r| r.as_str().to_string()).collect();
-            strings.serialize(serializer)
-        }
-        None => serializer.serialize_none(),
-    }
-}
+// fn custom_serializer_option_vec_regex<S>(
+//     value: &Option<Vec<Regex>>,
+//     serializer: S,
+// ) -> Result<S::Ok, S::Error>
+// where
+//     S: Serializer,
+// {
+//     match value {
+//         Some(regexes) => {
+//             let strings: Vec<String> = regexes.iter().map(|r| r.as_str().to_string()).collect();
+//             strings.serialize(serializer)
+//         }
+//         None => serializer.serialize_none(),
+//     }
+// }
 
 /// Given a `Rule` and a setting name, try to get the setting value. If `None`, get the default
 /// from Config.

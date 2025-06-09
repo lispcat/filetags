@@ -46,7 +46,7 @@ pub fn start_watchers(event_tx: &Sender<Message>, config: &Arc<Config>) -> anyho
         config
             .rules
             .iter()
-            .map(|rule| rule.watch.len())
+            .map(|rule| rule.watch_dirs.len())
             .sum::<usize>()
             + 1,
     ));

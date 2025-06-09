@@ -9,7 +9,7 @@ use tracing::debug;
 
 use crate::{
     match_event_kinds, symlink_target,
-    utils::{calc_dest_link_from_src_orig, path_matches_any_regex},
+    utils::{calc_link_from_src_orig, path_matches_any_regex},
     Config,
 };
 
@@ -44,7 +44,7 @@ pub fn handle_path(
     watch_idx: usize,
 ) -> anyhow::Result<()> {
     let rule = &config.rules[rule_idx];
-    let watch = &rule.watch[watch_idx];
+    let watch = &rule.watch_dirs[watch_idx];
     let regexes = &rule.regex;
 
     if path_matches_any_regex(src_path, regexes)? {
@@ -52,16 +52,16 @@ pub fn handle_path(
 
         // For every dest_dir, check if the expected link_path has a symlink, and if not,
         // create one.
-        for dest in &rule.dest {
+        for link in &rule.link_dirs {
             // ensure that the dest_dir exists
             anyhow::ensure!(
-                dest.exists(),
-                "Error: dest ({:?}) does not exist... was it deleted?",
-                dest
+                link.exists(),
+                "Error: link ({:?}) does not exist... was it deleted?",
+                link
             );
 
             // where the link_path should be
-            let link_path = calc_dest_link_from_src_orig(src_path, watch, dest)?;
+            let link_path = calc_link_from_src_orig(src_path, watch, link)?;
 
             if link_path.exists() {
                 // file exists, so now check if it's a symlink and points to src_path

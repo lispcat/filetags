@@ -24,7 +24,7 @@ pub fn start_watchers_for_each_watch_dir(
 ) -> anyhow::Result<()> {
     // start watcher for each watch_dir
     for (rule_idx, rule) in config.rules.iter().enumerate() {
-        for (watch_idx, _) in rule.watch.iter().enumerate() {
+        for (watch_idx, _) in rule.watch_dirs.iter().enumerate() {
             let config_arc = Arc::clone(config);
             let tx_clone: Sender<Message> = tx.clone();
             let barrier_clone = barrier.clone();
@@ -51,7 +51,7 @@ fn start_watcher(
     barrier: Arc<Barrier>,
 ) -> anyhow::Result<()> {
     let rule = &config.rules[rule_idx];
-    let watch = &rule.watch[watch_idx];
+    let watch = &rule.watch_dirs[watch_idx];
 
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
         Ok(event) => match event.kind {

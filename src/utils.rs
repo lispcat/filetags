@@ -46,13 +46,13 @@ pub fn path_matches_any_regex(path: &Path, regexes: &[Regex]) -> anyhow::Result<
     Ok(regexes.iter().any(|r| r.is_match(filename)))
 }
 
-pub fn calc_dest_link_from_src_orig(
+pub fn calc_link_from_src_orig(
     src_path: &Path,
     watch_dir: &Path,
-    dest_dir: &Path,
+    link_dir: &Path,
 ) -> anyhow::Result<PathBuf> {
     let src_path_without_watch_dir = src_path.strip_prefix(watch_dir)?;
-    let link = dest_dir.join(src_path_without_watch_dir);
+    let link = link_dir.join(src_path_without_watch_dir);
 
     Ok(link)
 }

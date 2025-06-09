@@ -27,7 +27,40 @@ TODO: more info.
 - low memory footprint even with many files being watched.
 - currently only supports Linux, but planning on adding support for other operating systems.
 
+* To Do
+
+during post-serialization of config, create a copy of config with the rule-specific settings replaced with the defaults if none (or similar).
+
 * Refactoring scratch
 
+** Main
 
+1. args, config_gen
 
+2. init checks (ensure all source_dirs and link_dirs exist, creating them if needed)
+
+3. start responder (the main place where events are processed)
+
+4. run clean all inappropriate links in all link_dirs.
+
+5. start periodic_link_cleaner
+
+6. run test hook
+
+7. wait until responder thread completes
+
+** File tree
+
+- channels/
+  - actions/
+    - symlinking.rs
+    - cleaning.rs
+  - responder.rs
+  - senders.rs
+- args.rs
+- channels.rs
+- config.rs
+- lib.rs
+- logger.rs
+- main.rs
+- utils.rs

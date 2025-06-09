@@ -17,13 +17,13 @@ pub fn create_test_env() -> (TempDir, PathBuf) {
     (temp_dir, test_path)
 }
 
-pub fn _serialize_config(at_path: &Path, config: Config) -> anyhow::Result<()> {
-    let yml_string = serde_yml::to_string(&config)?;
-    let mut file = File::create(at_path)?;
-    file.write_all(yml_string.as_bytes())?;
+// pub fn _serialize_config(at_path: &Path, config: Config) -> anyhow::Result<()> {
+//     let yml_string = serde_yml::to_string(&config)?;
+//     let mut file = File::create(at_path)?;
+//     file.write_all(yml_string.as_bytes())?;
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 #[macro_export]
 macro_rules! let_paths {
@@ -89,12 +89,12 @@ macro_rules! create_config {
                 $(
                     Rule {
                         name: $name.into(),
-                        watch: vec![
+                        watch_dirs: vec![
                             $(
                                 $watch.clone()
                             )+
                         ],
-                        dest: vec![
+                        link_dirs: vec![
                             $(
                                 $dest.clone()
                             )+

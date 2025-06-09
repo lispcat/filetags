@@ -65,8 +65,8 @@ fn start_cleaner(
     barrier.wait();
     loop {
         let rule = &config.rules[rule_idx];
-        for (dest_idx, _dest) in rule.dest.iter().enumerate() {
-            tx.send(Message::CleanDir(rule_idx, dest_idx))
+        for (link_idx, _dest) in rule.link_dirs.iter().enumerate() {
+            tx.send(Message::CleanDir(rule_idx, link_idx))
                 .context("failed to send message for clean dir")?;
         }
 
@@ -74,11 +74,11 @@ fn start_cleaner(
     }
 }
 
-pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, dest_idx: usize) -> anyhow::Result<()> {
+pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyhow::Result<()> {
     let rule = &config.rules[rule_idx];
-    let dest_dir = &rule.dest[dest_idx];
+    let link_dir = &rule.link_dirs[link_idx];
 
-    for entry in WalkDir::new(dest_dir) {
+    for entry in WalkDir::new(link_dir) {
         let entry = entry?;
         let path = entry.path();
 
@@ -129,7 +129,7 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, dest_idx: usize) -> anyh
         }
 
         // if symlink target is not a subdir of any watch dir, delete symlink
-        if !path_is_rec_subdir_of_any(&symlink_target, &rule.watch)? {
+        if !path_is_rec_subdir_of_any(&symlink_target, &rule.watch_dirs)? {
             debug!(
                 "Symlink target is not a subdir of any watch dirs, so deleting symlink: {:?}",
                 symlink_target,
@@ -142,7 +142,7 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, dest_idx: usize) -> anyh
 
         debug!("Existing symlink looks good!: {:?}", path);
     }
-    debug!("cleanup of dest_dir complete!: {:?}", dest_dir);
+    debug!("cleanup of dest_dir complete!: {:?}", link_dir);
 
     Ok(())
 }
@@ -150,8 +150,8 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, dest_idx: usize) -> anyh
 pub fn clean_and_symlink_all(config: &Arc<Config>) -> anyhow::Result<()> {
     // - walk throgh every dir path recursively with WalkDir...
     for (rule_idx, rule) in config.rules.iter().enumerate() {
-        for (dest_idx, _dest) in rule.dest.iter().enumerate() {
-            clean_dir(config, rule_idx, dest_idx)?;
+        for (link_idx, _dest) in rule.link_dirs.iter().enumerate() {
+            clean_dir(config, rule_idx, link_idx)?;
         }
         debug!("cleanup of dest_dirs in rule complete!: {}", rule.name);
     }
@@ -159,7 +159,7 @@ pub fn clean_and_symlink_all(config: &Arc<Config>) -> anyhow::Result<()> {
 
     // TODO: do symlinks to all matching...
     for (rule_idx, rule) in config.rules.iter().enumerate() {
-        for (watch_idx, watch) in rule.watch.iter().enumerate() {
+        for (watch_idx, watch) in rule.watch_dirs.iter().enumerate() {
             for direntry in WalkDir::new(watch) {
                 handle_path(config, direntry.unwrap().path(), rule_idx, watch_idx)?;
             }

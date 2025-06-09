@@ -3,9 +3,9 @@
 # rules:
 
 #   - name: "favorite samples"
-#     watch:
+#     watch_dirs:
 #       - "~/Music/prod/Samples/sample_packs/"
-#     dest:
+#     link_dirs:
 #       - "~/Music/prod/Samples/_Favorites/"
 #     regex:
 #       - "^_.*"

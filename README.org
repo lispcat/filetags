@@ -29,7 +29,7 @@ TODO: more info.
 
 * To Do
 
-during post-serialization of config, create a copy of config with the rule-specific settings replaced with the defaults if none (or similar).
+- [ ] during post-serialization of config, create a copy of config with the rule-specific settings replaced with the defaults if none (or similar).
 
 * Refactoring scratch
 

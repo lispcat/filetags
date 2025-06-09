@@ -8,12 +8,11 @@ use notify::{
 use tracing::debug;
 
 use crate::{
+    channels::WatchEvent,
     match_event_kinds, symlink_target,
     utils::{calc_link_from_src_orig, path_matches_any_regex},
     Config,
 };
-
-use super::WatchEvent;
 
 /// Handle a `notify::Event` received from the crossbeam channel Receiver.
 ///

@@ -13,6 +13,28 @@ use tracing::debug;
 
 use crate::{channels::WatchEvent, match_event_kinds, Config, Message};
 
+/// Set up watchers for each watch_dir
+pub fn start_watchers(event_tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
+    // set up barrier with total sum of watch dirs
+    let barrier = Arc::new(Barrier::new(
+        config
+            .rules
+            .iter()
+            .map(|rule| rule.watch_dirs.len())
+            .sum::<usize>()
+            + 1,
+    ));
+
+    // start an async watcher for each watch_dir
+    start_watchers_for_each_watch_dir(config, event_tx, &barrier)?;
+
+    // pause execution untill all watchers started
+    barrier.wait();
+    debug!("BARRIER PASSED!");
+
+    Ok(())
+}
+
 /// For each watch dir, spawn a notify watcher, where every `notify::Event` the watcher creates
 /// is forwarded to its corresponding crossbeam channel Receiver from the calling function.
 ///

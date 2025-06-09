@@ -1,7 +1,9 @@
 use std::{fs, sync::Arc};
 
 use anyhow::Context;
-use channels::{cleaning::start_cleaners, start_responder, start_watchers};
+use channels::{
+    actions::cleaning::start_cleaners, responder::start_responder, watcher::start_watchers,
+};
 use crossbeam_channel::{Receiver, Sender};
 use tracing::{debug, info_span, span};
 

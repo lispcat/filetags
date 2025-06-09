@@ -11,11 +11,9 @@ use tracing::debug;
 use walkdir::WalkDir;
 
 use crate::{
-    channels::symlinking::handle_path, get_setting, path_is_rec_subdir_of_any, symlink_target,
-    utils::path_matches_any_regex, Config,
+    channels::actions::symlinking::handle_path, get_setting, path_is_rec_subdir_of_any,
+    symlink_target, utils::path_matches_any_regex, Config, Message,
 };
-
-use super::Message;
 
 pub fn start_cleaners(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
     // set up barrier with total sum of TODO

@@ -3,6 +3,7 @@ use std::{fs, sync::Arc};
 use anyhow::Context;
 use channels::{cleaning::start_cleaners, start_responder, start_watchers};
 use crossbeam_channel::{Receiver, Sender};
+use tracing::{debug, info_span, span};
 
 mod args;
 mod channels;
@@ -15,7 +16,6 @@ pub use args::*;
 pub use channels::Message;
 pub use config::*;
 pub use logger::*;
-use tracing::{debug, info_span};
 pub use utils::*;
 
 // TODO:
@@ -36,7 +36,7 @@ pub fn run_with_args(args: Args, tx: Sender<Message>, rx: Receiver<Message>) -> 
     let config = Arc::new(Config::new(&args)?);
     let _logger = Logger::new();
 
-    let _span = info_span!("Run").entered();
+    let _span_guard = info_span!("Run").entered();
     run_with_config(config, tx, rx, None::<fn()>)
 }
 
@@ -50,7 +50,7 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     debug!("The Config: {:?}", config);
 
     // do some init fs checks and assurances
-    init_dirs(&config).context("failed to init dirs")?;
+    init_fs(&config).context("failed to init fs")?;
 
     // process one event at a time until process terminated
     let responder_handle =
@@ -69,9 +69,8 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
 
     // maybe run test hook
     if let Some(hook) = test_hook {
-        debug!("RUNNING HOOKS");
+        let _span = enter_span!(DEBUG, "test_hook");
         hook();
-        debug!("RAN HOOKS");
     }
 
     // Block until responder thread completes
@@ -84,21 +83,22 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
 
 /// To be run at startup.
 /// Initialize directories and catch errors early to prevent mild catastrophes.
-fn init_dirs(config: &Config) -> anyhow::Result<()> {
+fn init_fs(config: &Config) -> anyhow::Result<()> {
+    let _span = enter_span!(INFO, "init_dirs");
+
     for rule in &config.rules {
         for path in &rule.watch {
             if path.try_exists()? {
-                debug!("Path to watch found: {:?}", path)
+                debug!(?path, "Path to watch found");
             } else {
-                println!("Path NOT found: {:?}", path);
+                debug!(?path, "Path to watch not found");
                 if get_setting!(config, rule, create_missing_directories) {
-                    debug!("Creating directory at: {:?}", path);
+                    debug!(?path, "Creating directory");
                     fs::create_dir_all(path).with_context(|| {
                         format!("failed to create symlink directory: {:?}", path)
                     })?;
-                    debug!("Created path at: {:?}", path);
                 } else {
-                    anyhow::bail!("path does not exist! terminating...");
+                    anyhow::bail!("Path does not exist! terminating...");
                 }
             }
         }

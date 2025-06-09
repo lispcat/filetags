@@ -61,3 +61,14 @@ pub fn send_shutdown(tx: &crossbeam_channel::Sender<Message>) {
     // shutdown
     let _ = tx.clone().send(Message::Shutdown);
 }
+
+#[macro_export]
+macro_rules! enter_span {
+    ($level:ident, $($args:expr)+) => {
+        span!(tracing::Level::$level,
+            $(
+                $args
+            )+
+        ).entered()
+    };
+}

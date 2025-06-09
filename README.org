@@ -27,4 +27,7 @@ TODO: more info.
 - low memory footprint even with many files being watched.
 - currently only supports Linux, but planning on adding support for other operating systems.
 
+* Refactoring scratch
+
+
 

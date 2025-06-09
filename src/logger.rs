@@ -23,27 +23,6 @@ pub struct LogEntry {
 /// Type-alias for storage for logs
 pub type LogStorage = Arc<Mutex<Vec<LogEntry>>>;
 
-// Field Visitor //////////////////////////////////////////////////////////////
-
-/// Visitor to extract fields from tracing event
-struct FieldVisitor {
-    message: String,
-}
-
-impl FieldVisitor {
-    pub fn new() -> Self {
-        Self {
-            message: String::new(),
-        }
-    }
-}
-
-impl tracing::field::Visit for FieldVisitor {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-        debug!("TODO: Not yet implemented!");
-    }
-}
-
 // Memory Layer ///////////////////////////////////////////////////////////////
 
 /// Custom tracing layer that captures logs to memory
@@ -76,6 +55,27 @@ where
         if let Ok(mut logs) = self.storage.lock() {
             logs.push(entry);
         }
+    }
+}
+
+// Field Visitor //////////////////////////////////////////////////////////////
+
+/// Visitor to extract fields from tracing event
+struct FieldVisitor {
+    message: String,
+}
+
+impl FieldVisitor {
+    pub fn new() -> Self {
+        Self {
+            message: String::new(),
+        }
+    }
+}
+
+impl tracing::field::Visit for FieldVisitor {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        debug!("TODO: Not yet implemented!");
     }
 }
 

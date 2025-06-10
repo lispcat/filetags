@@ -94,7 +94,7 @@ fn init_fs(config: &Config) -> anyhow::Result<()> {
                 debug!(?path, "Path to watch found");
             } else {
                 debug!(?path, "Path to watch not found");
-                if get_setting!(config, rule, create_missing_directories) {
+                if rule.settings.create_missing_directories {
                     debug!(?path, "Creating directory");
                     fs::create_dir_all(path).with_context(|| {
                         format!("failed to create symlink directory: {:?}", path)

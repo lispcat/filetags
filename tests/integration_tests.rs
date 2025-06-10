@@ -10,7 +10,7 @@ use tracing::{info, info_span, warn};
 
 #[test]
 fn logging_wip() {
-    let logger = Logger::new();
+    let _logger = Logger::new();
 
     info!("This is an info message!");
     warn!("This is a warn message!");

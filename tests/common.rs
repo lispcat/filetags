@@ -1,11 +1,8 @@
 use std::{
     collections::HashSet,
-    fs::File,
-    io::Write,
     path::{Path, PathBuf},
 };
 
-use filetags::Config;
 use itertools::Itertools;
 use tempfile::TempDir;
 use tracing::debug;

@@ -15,26 +15,25 @@ pub struct Config {
 
 #[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct ConfigRaw {
+pub struct RawConfig {
     #[serde(rename = "default_settings")]
     pub default_rule_settings: RuleSettings,
     pub rules: Vec<Rule>,
 }
 
 macro_rules! unwrap_raw_setting_or_default {
-    ($field:ident, $settings_raw:ident, $config_raw:ident) => {{
-        $settings_raw
+    ($field:ident, $raw_rule_settings:ident, $raw_config:ident) => {{
+        $raw_rule_settings
             .$field
-            .clone()
-            .unwrap_or($config_raw.default_rule_settings.$field.clone())
+            .unwrap_or($raw_config.default_rule_settings.$field.clone())
     }};
 }
 
 macro_rules! new_rule_settings_with_defaults {
-    ( $config_raw:ident, $settings_raw:ident, ($($field:ident),+) ) => {{
+    ( $raw_config:ident, $raw_rule_settings:ident, ($($field:ident),+) ) => {{
         RuleSettings {
             $(
-                $field: unwrap_raw_setting_or_default!($field, $settings_raw, $config_raw),
+                $field: unwrap_raw_setting_or_default!($field, $raw_rule_settings, $raw_config),
             )+
         }
     }};
@@ -45,33 +44,35 @@ impl<'de> Deserialize<'de> for Config {
     where
         D: Deserializer<'de>,
     {
-        let mut config_raw = ConfigRaw::deserialize(deserializer)?;
+        let raw_config = RawConfig::deserialize(deserializer)?;
 
-        let updated_rules = config_raw
+        let updated_rules = raw_config
             .rules
-            .iter_mut()
+            .iter()
             .map(|rule| -> Rule {
-                let settings_raw = &rule.raw_settings;
-                rule.settings = new_rule_settings_with_defaults!(
-                    config_raw,
-                    settings_raw,
-                    (
-                        create_missing_directories,
-                        exclude_pattern,
-                        max_depth,
-                        follow_symlinks,
-                        clean_interval
+                let mut rule_new = rule.clone();
+                rule_new.settings = {
+                    let raw_rule_settings = rule.raw_settings.clone().unwrap_or_default();
+                    new_rule_settings_with_defaults!(
+                        raw_config,
+                        raw_rule_settings,
+                        (
+                            create_missing_directories,
+                            exclude_pattern,
+                            max_depth,
+                            follow_symlinks,
+                            clean_interval
+                        )
                     )
-                );
-                rule.clone()
+                };
+                rule_new.raw_settings = None;
+                rule_new
             })
             .collect::<Vec<Rule>>();
 
-        let updated_config = Config {
+        Ok(Config {
             rules: updated_rules,
-        };
-
-        Ok(updated_config)
+        })
     }
 }
 
@@ -104,7 +105,7 @@ pub struct Rule {
     pub regex: Vec<Regex>,
 
     #[serde(rename = "settings")]
-    pub raw_settings: RuleSettingsRaw,
+    pub raw_settings: Option<RawRuleSettings>,
 
     #[serde(skip)]
     pub settings: RuleSettings,
@@ -132,7 +133,7 @@ pub struct RuleSettings {
 
 #[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct RuleSettingsRaw {
+pub struct RawRuleSettings {
     pub create_missing_directories: Option<bool>,
     #[serde(deserialize_with = "serde_regex::deserialize")]
     pub exclude_pattern: Option<Vec<Regex>>,
@@ -155,15 +156,6 @@ pub struct RuleSettingsRaw {
 //         }
 //         None => serializer.serialize_none(),
 //     }
-// }
-
-/// Given a `Rule` and a setting name, try to get the setting value. If `None`, get the default
-/// from Config.
-// #[macro_export]
-// macro_rules! get_setting {
-//     ($config:tt, $rule:tt, $name:tt) => {{
-//         $rule.settings.$name.unwrap_or($config.settings.$name)
-//     }};
 // }
 
 // Deserializer shell expansions //////////////////////////////////////////////

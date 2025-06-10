@@ -1,12 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use tracing::{debug, Subscriber};
-use tracing_subscriber::{
-    layer::{Context, Layered},
-    prelude::*,
-    registry::LookupSpan,
-    Layer,
-};
+use tracing_subscriber::{layer::Context, prelude::*, registry::LookupSpan, Layer};
 
 ///////////////////////////////////////////////////////////////////////////////
 //                                  Logging                                  //
@@ -74,7 +69,7 @@ impl FieldVisitor {
 }
 
 impl tracing::field::Visit for FieldVisitor {
-    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+    fn record_debug(&mut self, _field: &tracing::field::Field, _value: &dyn std::fmt::Debug) {
         debug!("TODO: Not yet implemented!");
     }
 }
@@ -84,6 +79,12 @@ impl tracing::field::Visit for FieldVisitor {
 pub struct Logger {
     _guard: tracing::subscriber::DefaultGuard,
     pub storage: LogStorage,
+}
+
+impl Default for Logger {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Logger {

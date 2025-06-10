@@ -11,8 +11,8 @@ use tracing::debug;
 use walkdir::WalkDir;
 
 use crate::{
-    channels::actions::symlinking::handle_path, get_setting, path_is_rec_subdir_of_any,
-    symlink_target, utils::path_matches_any_regex, Config, Message,
+    channels::actions::symlinking::handle_path, path_is_rec_subdir_of_any, symlink_target,
+    utils::path_matches_any_regex, Config, Message,
 };
 
 pub fn start_cleaners(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
@@ -35,7 +35,7 @@ fn start_cleaner_for_each_rule(
     barrier: &Arc<Barrier>,
 ) -> anyhow::Result<()> {
     for (rule_idx, rule) in config.rules.iter().enumerate() {
-        if let Some(clean_interval) = get_setting!(config, rule, clean_interval) {
+        if let Some(clean_interval) = rule.settings.clean_interval {
             let config_arc = Arc::clone(config);
             let tx_clone: Sender<Message> = tx.clone();
             let barrier_clone = barrier.clone();

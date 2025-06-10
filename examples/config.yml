@@ -1,12 +1,15 @@
-# settings:
 
-# rules:
+general:
 
-#   - name: "favorite samples"
-#     watch_dirs:
-#       - "~/Music/prod/Samples/sample_packs/"
-#     link_dirs:
-#       - "~/Music/prod/Samples/_Favorites/"
-#     regex:
-#       - "^_.*"
-#     settings:
+default_settings:
+
+rules:
+
+  - name: "favorite samples"
+    watch_dirs:
+      - "~/Music/prod/Samples/sample_packs/"
+    link_dirs:
+      - "~/Music/prod/Samples/_Favorites/"
+    regex:
+      - "^_.*"
+    settings:

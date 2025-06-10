@@ -2,20 +2,77 @@ use std::{env::VarError, fs, path::PathBuf};
 
 use anyhow::Context;
 use regex::Regex;
-use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{de::Error, Deserialize, Deserializer};
 use shellexpand::LookupError;
 use smart_default::SmartDefault;
 
 use crate::args::Args;
 
-/// The settings field specifies a set of defaults for all rules.
-/// The rules field specifies a list of rules.
-///
+#[derive(SmartDefault, Debug, Clone)]
+pub struct Config {
+    pub rules: Vec<Rule>,
+}
+
 #[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Config {
-    pub settings: Settings,
+pub struct ConfigRaw {
+    #[serde(rename = "default_settings")]
+    pub default_rule_settings: RuleSettings,
     pub rules: Vec<Rule>,
+}
+
+macro_rules! unwrap_raw_setting_or_default {
+    ($field:ident, $settings_raw:ident, $config_raw:ident) => {{
+        $settings_raw
+            .$field
+            .clone()
+            .unwrap_or($config_raw.default_rule_settings.$field.clone())
+    }};
+}
+
+macro_rules! new_rule_settings_with_defaults {
+    ( $config_raw:ident, $settings_raw:ident, ($($field:ident),+) ) => {{
+        RuleSettings {
+            $(
+                $field: unwrap_raw_setting_or_default!($field, $settings_raw, $config_raw),
+            )+
+        }
+    }};
+}
+
+impl<'de> Deserialize<'de> for Config {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let mut config_raw = ConfigRaw::deserialize(deserializer)?;
+
+        let updated_rules = config_raw
+            .rules
+            .iter_mut()
+            .map(|rule| -> Rule {
+                let settings_raw = &rule.raw_settings;
+                rule.settings = new_rule_settings_with_defaults!(
+                    config_raw,
+                    settings_raw,
+                    (
+                        create_missing_directories,
+                        exclude_pattern,
+                        max_depth,
+                        follow_symlinks,
+                        clean_interval
+                    )
+                );
+                rule.clone()
+            })
+            .collect::<Vec<Rule>>();
+
+        let updated_config = Config {
+            rules: updated_rules,
+        };
+
+        Ok(updated_config)
+    }
 }
 
 impl Config {
@@ -28,13 +85,6 @@ impl Config {
     }
 }
 
-/// Each Rule most notably has a `watch_dirs` and `link_dirs` field, where `watch_dirs` is a list
-/// of directories to look for filename cookies for, and `link_dirs` is a list of directories to
-/// create symlinks to.
-///
-/// The `settings` field specifies overrides to the global default settings set in the
-/// Config struct.
-///
 #[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Rule {
@@ -53,16 +103,16 @@ pub struct Rule {
     #[serde(with = "serde_regex")]
     pub regex: Vec<Regex>,
 
+    #[serde(rename = "settings")]
+    pub raw_settings: RuleSettingsRaw,
+
+    #[serde(skip)]
     pub settings: RuleSettings,
 }
 
-/// The `Settings` struct is used to define the defaults for settings for all Rules.
-///
-/// Overrides on a per-Rule basis can be done in each instance of `RuleSettings` in each Rule.
-///
 #[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Settings {
+pub struct RuleSettings {
     #[default(true)]
     pub create_missing_directories: bool,
 
@@ -80,19 +130,9 @@ pub struct Settings {
     pub clean_interval: Option<u32>,
 }
 
-/// A copy of the `Settings` struct except that every field is wrapped in an `Option<T>` and
-/// defaults to `None`.
-///
-/// This is to be used inside every Rule.
-///
-/// The reason for the differentiation between `Settings` and `RuleSettings` is so that when
-/// `RuleSettings` has a field with no explicitly set default value (None), it searches the
-/// `Settings` struct for a default instead. This fallback mechanism is implemented using the
-/// `get_setting` macro.
-///
 #[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct RuleSettings {
+pub struct RuleSettingsRaw {
     pub create_missing_directories: Option<bool>,
     #[serde(deserialize_with = "serde_regex::deserialize")]
     pub exclude_pattern: Option<Vec<Regex>>,
@@ -119,12 +159,12 @@ pub struct RuleSettings {
 
 /// Given a `Rule` and a setting name, try to get the setting value. If `None`, get the default
 /// from Config.
-#[macro_export]
-macro_rules! get_setting {
-    ($config:tt, $rule:tt, $name:tt) => {{
-        $rule.settings.$name.unwrap_or($config.settings.$name)
-    }};
-}
+// #[macro_export]
+// macro_rules! get_setting {
+//     ($config:tt, $rule:tt, $name:tt) => {{
+//         $rule.settings.$name.unwrap_or($config.settings.$name)
+//     }};
+// }
 
 // Deserializer shell expansions //////////////////////////////////////////////
 

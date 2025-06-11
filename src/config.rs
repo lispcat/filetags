@@ -1,4 +1,4 @@
-use std::{env::VarError, fs, path::PathBuf};
+use std::{env::VarError, fs, path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use regex::Regex;
@@ -8,10 +8,75 @@ use smart_default::SmartDefault;
 
 use crate::args::Args;
 
+// Config /////////////////////////////////////////////////////////////////////
+
+// Note: Deserialization impl is further down
+
 #[derive(SmartDefault, Debug, Clone)]
 pub struct Config {
     pub rules: Vec<Rule>,
 }
+
+impl Config {
+    pub fn create(args: &Args) -> anyhow::Result<Arc<Self>> {
+        let path: PathBuf = args.config_path.clone();
+        let contents: String =
+            fs::read_to_string(path).with_context(|| "failed to read config file")?;
+        let config: Self = serde_yml::from_str(&contents)?;
+        Ok(Arc::new(config))
+    }
+}
+
+// Rule ///////////////////////////////////////////////////////////////////////
+
+#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Rule {
+    #[default("rule")]
+    pub name: String,
+
+    #[default(vec![])]
+    #[serde(deserialize_with = "expand_paths")]
+    pub watch_dirs: Vec<PathBuf>,
+
+    #[default(vec![])]
+    #[serde(deserialize_with = "expand_paths")]
+    pub link_dirs: Vec<PathBuf>,
+
+    #[default(vec![])]
+    #[serde(with = "serde_regex")]
+    pub regex: Vec<Regex>,
+
+    #[serde(rename = "settings")]
+    pub raw_settings: Option<RawRuleSettings>,
+
+    #[serde(skip)]
+    pub settings: RuleSettings,
+}
+
+// RuleSettings ///////////////////////////////////////////////////////////////
+
+#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RuleSettings {
+    #[default(true)]
+    pub create_missing_directories: bool,
+
+    #[default(vec![])]
+    #[serde(with = "serde_regex")]
+    pub exclude_pattern: Vec<Regex>,
+
+    #[default(50)]
+    pub max_depth: u32,
+
+    #[default(false)]
+    pub follow_symlinks: bool,
+
+    #[default(Some(10))]
+    pub clean_interval: Option<u32>,
+}
+
+// Config - Deserialization ///////////////////////////////////////////////////
 
 #[derive(SmartDefault, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -19,6 +84,17 @@ pub struct RawConfig {
     #[serde(rename = "default_settings")]
     pub default_rule_settings: RuleSettings,
     pub rules: Vec<Rule>,
+}
+
+#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RawRuleSettings {
+    pub create_missing_directories: Option<bool>,
+    #[serde(deserialize_with = "serde_regex::deserialize")]
+    pub exclude_pattern: Option<Vec<Regex>>,
+    pub max_depth: Option<u32>,
+    pub follow_symlinks: Option<bool>,
+    pub clean_interval: Option<Option<u32>>,
 }
 
 macro_rules! unwrap_raw_setting_or_default {
@@ -76,88 +152,6 @@ impl<'de> Deserialize<'de> for Config {
     }
 }
 
-impl Config {
-    pub fn new(args: &Args) -> anyhow::Result<Self> {
-        let path: PathBuf = args.config_path.clone();
-        let contents: String =
-            fs::read_to_string(path).with_context(|| "failed to read config file")?;
-        let config: Self = serde_yml::from_str(&contents)?;
-        Ok(config)
-    }
-}
-
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct Rule {
-    #[default("rule")]
-    pub name: String,
-
-    #[default(vec![])]
-    #[serde(deserialize_with = "expand_paths")]
-    pub watch_dirs: Vec<PathBuf>,
-
-    #[default(vec![])]
-    #[serde(deserialize_with = "expand_paths")]
-    pub link_dirs: Vec<PathBuf>,
-
-    #[default(vec![])]
-    #[serde(with = "serde_regex")]
-    pub regex: Vec<Regex>,
-
-    #[serde(rename = "settings")]
-    pub raw_settings: Option<RawRuleSettings>,
-
-    #[serde(skip)]
-    pub settings: RuleSettings,
-}
-
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct RuleSettings {
-    #[default(true)]
-    pub create_missing_directories: bool,
-
-    #[default(vec![])]
-    #[serde(with = "serde_regex")]
-    pub exclude_pattern: Vec<Regex>,
-
-    #[default(50)]
-    pub max_depth: u32,
-
-    #[default(false)]
-    pub follow_symlinks: bool,
-
-    #[default(Some(10))]
-    pub clean_interval: Option<u32>,
-}
-
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct RawRuleSettings {
-    pub create_missing_directories: Option<bool>,
-    #[serde(deserialize_with = "serde_regex::deserialize")]
-    pub exclude_pattern: Option<Vec<Regex>>,
-    pub max_depth: Option<u32>,
-    pub follow_symlinks: Option<bool>,
-    pub clean_interval: Option<Option<u32>>,
-}
-
-// fn custom_serializer_option_vec_regex<S>(
-//     value: &Option<Vec<Regex>>,
-//     serializer: S,
-// ) -> Result<S::Ok, S::Error>
-// where
-//     S: Serializer,
-// {
-//     match value {
-//         Some(regexes) => {
-//             let strings: Vec<String> = regexes.iter().map(|r| r.as_str().to_string()).collect();
-//             strings.serialize(serializer)
-//         }
-//         None => serializer.serialize_none(),
-//     }
-// }
-
 // Deserializer shell expansions //////////////////////////////////////////////
 
 /// Trait Extension for PathBuf for shell expansions.
@@ -186,3 +180,19 @@ where
         .map(|p| -> Result<PathBuf, _> { p.shell_expand().map_err(D::Error::custom) })
         .collect()
 }
+
+// fn custom_serializer_option_vec_regex<S>(
+//     value: &Option<Vec<Regex>>,
+//     serializer: S,
+// ) -> Result<S::Ok, S::Error>
+// where
+//     S: Serializer,
+// {
+//     match value {
+//         Some(regexes) => {
+//             let strings: Vec<String> = regexes.iter().map(|r| r.as_str().to_string()).collect();
+//             strings.serialize(serializer)
+//         }
+//         None => serializer.serialize_none(),
+//     }
+// }

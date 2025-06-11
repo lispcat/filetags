@@ -63,7 +63,7 @@ fn start_cleaner(
     barrier.wait();
     loop {
         let rule = &config.rules[rule_idx];
-        for (link_idx, _dest) in rule.link_dirs.iter().enumerate() {
+        for (link_idx, _link) in rule.link_dirs.iter().enumerate() {
             tx.send(Message::CleanDir(rule_idx, link_idx))
                 .context("failed to send message for clean dir")?;
         }
@@ -140,7 +140,7 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyh
 
         debug!("Existing symlink looks good!: {:?}", path);
     }
-    debug!("cleanup of dest_dir complete!: {:?}", link_dir);
+    debug!("cleanup of link_dir complete!: {:?}", link_dir);
 
     Ok(())
 }
@@ -148,10 +148,10 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyh
 pub fn clean_and_symlink_all(config: &Arc<Config>) -> anyhow::Result<()> {
     // - walk throgh every dir path recursively with WalkDir...
     for (rule_idx, rule) in config.rules.iter().enumerate() {
-        for (link_idx, _dest) in rule.link_dirs.iter().enumerate() {
+        for (link_idx, _link) in rule.link_dirs.iter().enumerate() {
             clean_dir(config, rule_idx, link_idx)?;
         }
-        debug!("cleanup of dest_dirs in rule complete!: {}", rule.name);
+        debug!("cleanup of link_dirs in rule complete!: {}", rule.name);
     }
     debug!("cleanup of all rules complete!");
 

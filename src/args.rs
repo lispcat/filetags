@@ -13,6 +13,11 @@ pub struct Args {
     /// Path to config file
     pub config_path: PathBuf,
 }
+impl Args {
+    pub(crate) fn parse() -> Args {
+        todo!()
+    }
+}
 
 fn default_config_path() -> PathBuf {
     let config_dir = env::var_os("XDG_CONFIG_HOME")

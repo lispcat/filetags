@@ -2,7 +2,7 @@ mod common;
 
 use std::{fs, sync::Arc, thread, time::Duration};
 
-use filetags::{run_with_config, send_shutdown, Config, Logger, Message, Rule};
+use filetags::{clone_vars, run_with_config, send_shutdown, Config, Logger, Message, Rule};
 use regex::Regex;
 
 use common::*;
@@ -27,7 +27,7 @@ fn basic1() {
     // create dirs
     let_paths!(
         (watch_dir = root / "watch_dir" : create = "dir"),
-        (dest_dir = root / "dest_dir"   : create = "dir"),
+        (link_dir = root / "link_dir"   : create = "dir"),
     );
 
     // create files
@@ -47,7 +47,7 @@ fn basic1() {
     );
 
     // define config
-    let config = create_config!(("test", (watch_dir), (dest_dir), "^_.*"));
+    let config = create_config!(("test", (watch_dir), (link_dir), "^_.*"));
 
     let test_hook = {
         clone_vars!(tx, file3, file3_renamed, file4);
@@ -67,10 +67,10 @@ fn basic1() {
     assert_cur_and_exp_trees_eq(
         &root,
         vec![
-            "dest_dir",
-            "dest_dir/_file2.txt",
-            "dest_dir/_file3.txt",
-            "dest_dir/_file4.txt",
+            "link_dir",
+            "link_dir/_file2.txt",
+            "link_dir/_file3.txt",
+            "link_dir/_file4.txt",
             "watch_dir",
             "watch_dir/_file2.txt",
             "watch_dir/_file3.txt",
@@ -93,22 +93,22 @@ fn basic2() {
     // create dirs
     let_paths!(
         (watch_dir = root / "watch_dir" : create = "dir"),
-        (dest_dir = root / "dest_dir"   : create = "dir"),
+        (link_dir = root / "link_dir"   : create = "dir"),
     );
 
     // create files
     let_paths!(
         // expect no action, because symlink already created
         (file1 = watch_dir / "_file1.txt"        : create = "f"),
-        (file1_symlink = dest_dir / "_file1.txt" : create = "symlink" => file1),
+        (file1_symlink = link_dir / "_file1.txt" : create = "symlink" => file1),
 
         // broken symlink, delete at init
         (file2_non_existent = watch_dir / "_file2.txt"  : create = "no"),
-        (file2_broken_symlink = dest_dir / "_file2.txt" : create = "symlink" => file2_non_existent),
+        (file2_broken_symlink = link_dir / "_file2.txt" : create = "symlink" => file2_non_existent),
     );
 
     // define config
-    let config = create_config!(("test", (watch_dir), (dest_dir), "^_.*"));
+    let config = create_config!(("test", (watch_dir), (link_dir), "^_.*"));
 
     // define test hook
     let test_hook = {
@@ -126,8 +126,8 @@ fn basic2() {
     assert_cur_and_exp_trees_eq(
         &root,
         vec![
-            "dest_dir",
-            "dest_dir/_file1.txt",
+            "link_dir",
+            "link_dir/_file1.txt",
             "watch_dir",
             "watch_dir/_file1.txt",
         ],
@@ -143,7 +143,7 @@ fn basic2() {
 //     // create dirs
 //     let_paths!(
 //         (watch_dir = root / "watch_dir" : create = "dir"),
-//         (dest_dir = root / "dest_dir"   : create = "dir"),
+//         (link_dir = root / "link_dir"   : create = "dir"),
 //     );
 
 //     // create files
@@ -161,15 +161,15 @@ fn basic2() {
 //         // // expect init scan to take no action
 //         // // because already symlinked
 //         // (file4 = watch_dir / "_file4.txt"         : create = "f"),
-//         // (file4_symlink = dest_dir / "_file4.txt"  : create = "symlink" => file4),
+//         // (file4_symlink = link_dir / "_file4.txt"  : create = "symlink" => file4),
 //         // // expect init scan to delete symlink
 //         // // since broken
 //         // (file5_no_file = watch_dir / "file5.txt"        : create = "no"),
-//         // (file5_broken_symlink = dest_dir / "_file5.txt" : create = "symlink" => file5_no_file),
+//         // (file5_broken_symlink = link_dir / "_file5.txt" : create = "symlink" => file5_no_file),
 //     );
 
 //     // define config
-//     let config = create_config!(("test", (watch_dir), (dest_dir), "^_.*"));
+//     let config = create_config!(("test", (watch_dir), (link_dir), "^_.*"));
 
 //     // test hook
 //     set_test_hook({
@@ -205,10 +205,10 @@ fn basic2() {
 
 //     // // file2
 //     // assert!(file_init_scan.exists());
-//     // assert!(dest_dir.join(file_init_scan.file_name().unwrap()).exists());
+//     // assert!(link_dir.join(file_init_scan.file_name().unwrap()).exists());
 
 //     // // file_r
-//     // let file_rn_symlink = dest_dir.join(file_rn.file_name().unwrap());
+//     // let file_rn_symlink = link_dir.join(file_rn.file_name().unwrap());
 //     // assert!(file_rn_symlink.exists());
 
 //     Ok(())

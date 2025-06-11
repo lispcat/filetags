@@ -29,9 +29,11 @@ TODO: more info.
 
 * To Do
 
-- [ ] during post-serialization of config, create a copy of config with the rule-specific settings replaced with the defaults if none (or similar).
+- [X] during post-serialization of config, create a copy of config with the rule-specific settings replaced with the defaults if none (or similar).
 - [ ] go through all source code and rename all dest_dirs/dest_dir/dest to link_dirs/link_dir/link.
 - [ ] refactor everything very freely without fear of painful compilation issues (it'll literally only take 2mins, always)
+- [ ] implement Serialization for config, for more reliable integration tests
+  - [ ] make a macro to generate config file in fs to then deserialize (also ensures two-way 'se & 'de).
 
 * Refactoring scratch
 

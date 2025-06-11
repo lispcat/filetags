@@ -35,7 +35,7 @@ pub fn handle_event_message(config: &Config, message: &WatchEvent) -> anyhow::Re
 
 /// Check if the filename of the path matches the specified Regex's, and take action if needed.
 ///
-/// If it matches, create a symlink to the appropriate dest dir.
+/// If it matches, create a symlink to the appropriate link dir.
 pub fn handle_path(
     config: &Config,
     src_path: &Path,
@@ -49,10 +49,10 @@ pub fn handle_path(
     if path_matches_any_regex(src_path, regexes)? {
         debug!("Regex matches! {:?}", src_path);
 
-        // For every dest_dir, check if the expected link_path has a symlink, and if not,
+        // For every link_dir, check if the expected link_path has a symlink, and if not,
         // create one.
         for link in &rule.link_dirs {
-            // ensure that the dest_dir exists
+            // ensure that the link_dir exists
             anyhow::ensure!(
                 link.exists(),
                 "Error: link ({:?}) does not exist... was it deleted?",

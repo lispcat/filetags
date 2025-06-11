@@ -80,7 +80,7 @@ macro_rules! create_tx_rx {
 
 #[macro_export]
 macro_rules! create_config {
-    ( $(( $name:expr, $(($watch:expr))+, $(($dest:expr))+, $regex:tt )),+ $(,)? ) => {
+    ( $(( $name:expr, $(($watch:expr))+, $(($link:expr))+, $regex:tt )),+ $(,)? ) => {
         Arc::new(Config {
             rules: vec![
                 $(
@@ -93,7 +93,7 @@ macro_rules! create_config {
                         ],
                         link_dirs: vec![
                             $(
-                                $dest.clone()
+                                $link.clone()
                             )+
                         ],
                         regex: vec![
@@ -107,15 +107,6 @@ macro_rules! create_config {
             ..Config::default()
         })
     }
-}
-
-#[macro_export]
-macro_rules! clone_vars {
-    ($($var:ident),+) => {
-        $(
-            let $var = $var.clone();
-        )+
-    };
 }
 
 pub fn rename_file(orig: &Path, new: &Path) {

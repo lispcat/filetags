@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use anyhow::Context;
@@ -15,7 +16,7 @@ macro_rules! match_event_kinds {
 use regex::Regex;
 use tracing::debug;
 
-use crate::Message;
+use crate::{Config, Message};
 
 pub fn symlink_target(path: &Path) -> anyhow::Result<Option<PathBuf>> {
     if let Ok(target_path) = fs::read_link(path) {
@@ -59,16 +60,47 @@ pub fn calc_link_from_src_orig(
 
 pub fn send_shutdown(tx: &crossbeam_channel::Sender<Message>) {
     // shutdown
-    let _ = tx.clone().send(Message::Shutdown);
+    tx.send(Message::Shutdown)
+        .expect("failed to shutdown, crashing program");
+}
+
+pub fn num_watch_dirs_for_config(config: &Arc<Config>) -> anyhow::Result<usize> {
+    let val: u128 = (config
+        .rules
+        .iter()
+        .map(|r| r.watch_dirs.len())
+        .sum::<usize>()
+        + 1)
+    .try_into()
+    .expect("failed to convert usize to u128");
+
+    if val > usize::MAX as u128 {
+        anyhow::bail!(
+            "number of watch_dirs ({:?}) exceeds usize::MAX ({:?}). this is probably a bug, unless your config file is that massive.",
+            val,
+            usize::MAX
+        );
+    } else {
+        Ok(val as usize)
+    }
 }
 
 #[macro_export]
 macro_rules! enter_span {
     ($level:ident, $($args:expr)+) => {
-        span!(tracing::Level::$level,
+        tracing::span!(tracing::Level::$level,
             $(
                 $args
             )+
         ).entered()
+    };
+}
+
+#[macro_export]
+macro_rules! clone_vars {
+    ($($var:ident),+) => {
+        $(
+            let $var = $var.clone();
+        )+
     };
 }

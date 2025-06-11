@@ -7,12 +7,15 @@ use notify::Event;
 /// Message to be sent throgh the crossbeam_channel.
 #[derive(Clone, Debug)]
 pub enum Message {
+    MaybeCreateDirsAll,
     Watch(WatchEvent),
     CleanDir(usize, usize),
     CleanAll,
     Shutdown,
 }
 
+/// Used it `Message::Watch(WatchEvent)`.
+/// Provides needed additional info for the responder and its invoked symlinker actions.
 #[derive(Clone, Debug)]
 pub struct WatchEvent {
     pub rule_idx: usize,

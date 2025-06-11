@@ -11,26 +11,22 @@ use notify::{
 };
 use tracing::debug;
 
-use crate::{channels::WatchEvent, match_event_kinds, Config, Message};
+use crate::{
+    channels::WatchEvent, clone_vars, match_event_kinds, num_watch_dirs_for_config, Config, Message,
+};
 
 /// Set up watchers for each watch_dir
-pub fn start_watchers(event_tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
+pub fn start_watchers(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
     // set up barrier with total sum of watch dirs
-    let barrier = Arc::new(Barrier::new(
-        config
-            .rules
-            .iter()
-            .map(|rule| rule.watch_dirs.len())
-            .sum::<usize>()
-            + 1,
-    ));
+    let barrier = Arc::new(Barrier::new(num_watch_dirs_for_config(config)?));
 
     // start an async watcher for each watch_dir
-    start_watchers_for_each_watch_dir(config, event_tx, &barrier)?;
+    start_watchers_for_each_watch_dir(config, tx, &barrier)?;
 
-    // pause execution untill all watchers started
+    // pause execution until all watchers have started
+    debug!("barrier: pausing for watchers");
     barrier.wait();
-    debug!("BARRIER PASSED!");
+    debug!("barrier: resuming for watchers");
 
     Ok(())
 }
@@ -47,12 +43,10 @@ pub fn start_watchers_for_each_watch_dir(
     // start watcher for each watch_dir
     for (rule_idx, rule) in config.rules.iter().enumerate() {
         for (watch_idx, _) in rule.watch_dirs.iter().enumerate() {
+            clone_vars!(tx, barrier);
             let config_arc = Arc::clone(config);
-            let tx_clone: Sender<Message> = tx.clone();
-            let barrier_clone = barrier.clone();
-            // TODO: instead of simply cloning clone the sender and create a new instance of Message.
             thread::spawn(move || -> anyhow::Result<()> {
-                start_watcher(config_arc, rule_idx, watch_idx, tx_clone, barrier_clone)
+                start_watcher(config_arc, rule_idx, watch_idx, tx, barrier)
             });
         }
     }

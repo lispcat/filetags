@@ -23,12 +23,14 @@ pub use utils::*;
 // TODO:
 // - prevent recursive searching when LinkDir is within WatchDir or symlinking dirs.
 
+/// The default run command.
 pub fn run() -> anyhow::Result<()> {
     let args = Args::parse();
     let (tx, rx) = crossbeam_channel::unbounded::<Message>();
     run_with_args(args, tx, rx)
 }
 
+/// Run the program with args, tx, and rx.
 pub fn run_with_args(args: Args, tx: Sender<Message>, rx: Receiver<Message>) -> anyhow::Result<()> {
     // create a Config from Args
     let config: Arc<Config> = Config::create(&args)?;
@@ -37,7 +39,7 @@ pub fn run_with_args(args: Args, tx: Sender<Message>, rx: Receiver<Message>) -> 
     run_with_config(config, tx, rx, None::<fn()>)
 }
 
-// TODO: make run_with_args require tx and rx channels
+/// Run the program with config, tx, rx, and optionally test_hook.
 pub fn run_with_config<F: Fn() + Send + 'static>(
     config: Arc<Config>,
     tx: Sender<Message>,
@@ -45,25 +47,23 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     test_hook: Option<F>,
 ) -> anyhow::Result<()> {
     let _span = enter_span!(DEBUG, "running");
-
     debug!("Config: {:?}", config);
 
-    // start responder (processes one event at a time until process terminated)
-    let responder_handle = start_responder(rx, &config).context("failed to start responder")?;
+    // start responder
+    // (processes one event at a time until process terminated)
+    let responder_handle = start_responder(rx, &config).context("starting responder")?;
 
-    // make sure appropriate paths exist and are reachable
-    tx.send(Message::MaybeCreateDirsAll)
-        .context("failed to send message")?;
+    // create all necessary dirs
+    tx.send(Message::CreateNecessaryDirs)?;
 
-    // init clean
-    tx.send(Message::CleanAll)
-        .context("failed to send message")?;
+    // clean all broken or innapropriate links in link_dirs
+    tx.send(Message::CleanAll)?;
 
-    // start all cleaners
-    start_cleaners(&tx, &config).context("failed to start cleaners")?;
+    // start all link cleaners
+    start_cleaners(&tx, &config).context("starting cleaners")?;
 
     // setup all watchers
-    start_watchers(&tx, &config).context("failed to setup watchers")?;
+    start_watchers(&tx, &config).context("starting watchers")?;
 
     // maybe run test hook (for integration tests)
     test_hook.inspect(|hook_fn| {

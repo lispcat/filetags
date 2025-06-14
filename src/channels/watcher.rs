@@ -18,15 +18,13 @@ use crate::{
 /// Set up watchers for each watch_dir
 pub fn start_watchers(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
     // set up barrier with total sum of watch dirs
-    let barrier = Arc::new(Barrier::new(num_watch_dirs_for_config(config)?));
+    let barrier = Arc::new(Barrier::new(1 + num_watch_dirs_for_config(config)?));
 
     // start an async watcher for each watch_dir
     start_watchers_for_each_watch_dir(config, tx, &barrier)?;
 
     // pause execution until all watchers have started
-    debug!("barrier: pausing for watchers");
     barrier.wait();
-    debug!("barrier: resuming for watchers");
 
     Ok(())
 }
@@ -41,8 +39,8 @@ pub fn start_watchers_for_each_watch_dir(
     barrier: &Arc<Barrier>,
 ) -> anyhow::Result<()> {
     // start watcher for each watch_dir
-    for (rule_idx, rule) in config.rules.iter().enumerate() {
-        for (watch_idx, _) in rule.watch_dirs.iter().enumerate() {
+    for rule_idx in 0..config.rules.len() {
+        for watch_idx in 0..config.rules[rule_idx].watch_dirs.len() {
             clone_vars!(tx, barrier);
             let config_arc = Arc::clone(config);
             thread::spawn(move || -> anyhow::Result<()> {

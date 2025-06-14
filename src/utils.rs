@@ -38,13 +38,14 @@ pub fn path_is_rec_subdir_of_any(path: &Path, many_dirs: &[PathBuf]) -> anyhow::
 }
 
 pub fn path_matches_any_regex(path: &Path, regexes: &[Regex]) -> anyhow::Result<bool> {
-    let filename = path
+    let raw_basename = path
         .file_name()
-        .with_context(|| format!("cannot get OsStr filename of path: {:?}", path))?
+        .with_context(|| format!("getting basename: {:?}", path))?;
+    let basename = raw_basename
         .to_str()
-        .with_context(|| format!("cannot convert OsStr to str for path: {:?}", path))?;
+        .with_context(|| format!("parsing basename to UTF-8: {:?}", raw_basename))?;
 
-    Ok(regexes.iter().any(|r| r.is_match(filename)))
+    Ok(regexes.iter().any(|r| r.is_match(basename)))
 }
 
 pub fn calc_link_from_src_orig(
@@ -65,24 +66,11 @@ pub fn send_shutdown(tx: &crossbeam_channel::Sender<Message>) {
 }
 
 pub fn num_watch_dirs_for_config(config: &Arc<Config>) -> anyhow::Result<usize> {
-    let val: u128 = (config
+    Ok(config
         .rules
         .iter()
         .map(|r| r.watch_dirs.len())
-        .sum::<usize>()
-        + 1)
-    .try_into()
-    .expect("failed to convert usize to u128");
-
-    if val > usize::MAX as u128 {
-        anyhow::bail!(
-            "number of watch_dirs ({:?}) exceeds usize::MAX ({:?}). this is probably a bug, unless your config file is that massive.",
-            val,
-            usize::MAX
-        );
-    } else {
-        Ok(val as usize)
-    }
+        .sum::<usize>())
 }
 
 #[macro_export]

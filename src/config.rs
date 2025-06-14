@@ -20,8 +20,7 @@ pub struct Config {
 impl Config {
     pub fn create(args: &Args) -> anyhow::Result<Arc<Self>> {
         let path: PathBuf = args.config_path.clone();
-        let contents: String =
-            fs::read_to_string(path).with_context(|| "failed to read config file")?;
+        let contents: String = fs::read_to_string(path).context("reading config file")?;
         let config: Self = serde_yml::from_str(&contents)?;
         Ok(Arc::new(config))
     }

@@ -26,8 +26,7 @@ pub fn maybe_create_dirs_all(config: &Arc<Config>) -> anyhow::Result<()> {
 fn handle_missing_dir(dir_path: &Path, rule: &Rule, _config: &Arc<Config>) -> anyhow::Result<()> {
     if rule.settings.create_missing_directories {
         info!(?dir_path, "creating directory and parents");
-        fs::create_dir_all(dir_path)
-            .with_context(|| format!("failed to create dir: {:?}", dir_path))?;
+        fs::create_dir_all(dir_path).with_context(|| format!("creating dir: {:?}", dir_path))?;
     } else {
         anyhow::bail!("path does not exist: {:?}", dir_path);
     }

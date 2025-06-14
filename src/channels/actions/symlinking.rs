@@ -25,7 +25,7 @@ pub fn handle_event_message(config: &Config, message: &WatchEvent) -> anyhow::Re
                 let rule_idx = message.rule_idx;
                 let watch_idx = message.watch_idx;
                 handle_path(config, check_path, rule_idx, watch_idx)
-                    .context("failed to handle path")?;
+                    .context("handling path for notify event")?;
             }
         }
         _ => (),
@@ -67,7 +67,7 @@ pub fn handle_path(
                 ensure_is_symlink_and_expected_target(&link_path, src_path)?;
             } else {
                 // file doesn't exist, so create a symlink to there
-                symlink(src_path, link_path).context("failed to create symlink")?;
+                symlink(src_path, link_path).context("creating symlink")?;
             }
         }
     }

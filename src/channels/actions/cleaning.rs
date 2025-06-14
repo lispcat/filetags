@@ -63,9 +63,9 @@ fn start_cleaner(
     barrier.wait();
     loop {
         let rule = &config.rules[rule_idx];
-        for (link_idx, _link) in rule.link_dirs.iter().enumerate() {
+        for link_idx in 0..rule.link_dirs.len() {
             tx.send(Message::CleanDir(rule_idx, link_idx))
-                .context("failed to send message for clean dir")?;
+                .context("sending message CleanDir")?;
         }
 
         thread::sleep(Duration::from_secs(clean_interval.into()));
@@ -81,12 +81,8 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyh
         let path = entry.path();
 
         // get file metadata
-        let metadata = fs::symlink_metadata(path).with_context(|| {
-            format!(
-                "could not perform metadata call on path or path does not exist: {:?}",
-                path
-            )
-        })?;
+        let metadata = fs::symlink_metadata(path)
+            .with_context(|| format!("performing metadata call on path: {:?}", path))?;
 
         // skip this file if not a symlink
         if !metadata.file_type().is_symlink() {
@@ -96,7 +92,7 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyh
         }
 
         // if file doesnt match any regex, it should't belong here... probably...
-        if !path_matches_any_regex(path, &rule.regex).context("failed to match regexes")? {
+        if !path_matches_any_regex(path, &rule.regex).context("matching regexes")? {
             debug!(
                 "Symlink doesn't match any regex, so deleting symlink i guess: {:?}",
                 path
@@ -106,15 +102,14 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyh
         }
 
         // if symlink is broken, delete!
-        let symlink_target =
-            match symlink_target(path).context("failed to check if valid symlink")? {
-                Some(p) => p,
-                None => {
-                    debug!("Symlink is broken, so deleting symlink: {:?}", path);
-                    fs::remove_file(path)?;
-                    continue;
-                }
-            };
+        let symlink_target = match symlink_target(path).context("getting symlink target")? {
+            Some(p) => p,
+            None => {
+                debug!("Symlink is broken, so deleting symlink: {:?}", path);
+                fs::remove_file(path)?;
+                continue;
+            }
+        };
 
         // does symlink target exist?
         if !symlink_target.exists() {
@@ -147,17 +142,17 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyh
 
 pub fn clean_and_symlink_all(config: &Arc<Config>) -> anyhow::Result<()> {
     // - walk throgh every dir path recursively with WalkDir...
-    for (rule_idx, rule) in config.rules.iter().enumerate() {
-        for (link_idx, _link) in rule.link_dirs.iter().enumerate() {
+    for rule_idx in 0..config.rules.len() {
+        for link_idx in 0..config.rules[rule_idx].link_dirs.len() {
             clean_dir(config, rule_idx, link_idx)?;
         }
-        debug!("cleanup of link_dirs in rule complete!: {}", rule.name);
+        debug!("cleanup of link_dirs in rule complete!");
     }
     debug!("cleanup of all rules complete!");
 
     // TODO: do symlinks to all matching...
-    for (rule_idx, rule) in config.rules.iter().enumerate() {
-        for (watch_idx, watch) in rule.watch_dirs.iter().enumerate() {
+    for rule_idx in 0..config.rules.len() {
+        for (watch_idx, watch) in config.rules[rule_idx].watch_dirs.iter().enumerate() {
             for direntry in WalkDir::new(watch) {
                 handle_path(config, direntry.unwrap().path(), rule_idx, watch_idx)?;
             }

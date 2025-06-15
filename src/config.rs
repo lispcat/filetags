@@ -77,7 +77,7 @@ pub struct RuleSettings {
 
 // Config - Deserialization ///////////////////////////////////////////////////
 
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RawConfig {
     #[serde(rename = "default_settings")]

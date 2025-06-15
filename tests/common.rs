@@ -80,8 +80,8 @@ macro_rules! create_tx_rx {
 
 #[macro_export]
 macro_rules! create_config {
-    ( $(( $name:expr, $(($watch:expr))+, $(($link:expr))+, $regex:tt )),+ $(,)? ) => {
-        Arc::new(Config {
+    ( $( ($name:expr, $(($watch:expr))+, $(($link:expr))+, $regex:tt) ),+ $(,)? ) => {{
+        let raw_config = filetags::RawConfig {
             rules: vec![
                 $(
                     Rule {
@@ -104,9 +104,12 @@ macro_rules! create_config {
                     }
                 )+
             ],
-            ..Config::default()
-        })
-    }
+            ..filetags::RawConfig::default()
+        };
+        let serialized_str = serde_yml::to_string(&raw_config).unwrap();
+        let deserialized_config: Config = serde_yml::from_str(&serialized_str).unwrap();
+        Arc::new(deserialized_config)
+    }}
 }
 
 pub fn rename_file(orig: &Path, new: &Path) {

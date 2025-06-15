@@ -36,7 +36,7 @@ TODO: more info.
   - ideas:
     : clone_vars!((Arc: config)) // => let arc_config = Arc::new(config);
 - [X] implement Serialization for config, for more reliable integration tests
-- [ ] make a macro to generate config file in fs to then deserialize (also ensures two-way 'se & 'de).
+- [X] make a macro to generate config file in fs to then deserialize (also ensures two-way 'se & 'de).
 
 * Refactoring scratch
 

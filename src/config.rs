@@ -2,17 +2,17 @@ use std::{env::VarError, fs, path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use regex::Regex;
-use serde::{de::Error, Deserialize, Deserializer};
+use serde::{de::Error, Deserialize, Deserializer, Serialize};
 use shellexpand::LookupError;
 use smart_default::SmartDefault;
 
-use crate::args::Args;
+use crate::{args::Args, utils};
 
 // Config /////////////////////////////////////////////////////////////////////
 
 // Note: Deserialization impl is further down
 
-#[derive(SmartDefault, Debug, Clone)]
+#[derive(SmartDefault, Debug, Clone, Serialize)]
 pub struct Config {
     pub rules: Vec<Rule>,
 }
@@ -28,7 +28,7 @@ impl Config {
 
 // Rule ///////////////////////////////////////////////////////////////////////
 
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Rule {
     #[default("rule")]
@@ -55,7 +55,7 @@ pub struct Rule {
 
 // RuleSettings ///////////////////////////////////////////////////////////////
 
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RuleSettings {
     #[default(true)]
@@ -85,11 +85,14 @@ pub struct RawConfig {
     pub rules: Vec<Rule>,
 }
 
-#[derive(SmartDefault, Debug, Clone, Deserialize)]
+#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RawRuleSettings {
     pub create_missing_directories: Option<bool>,
-    #[serde(deserialize_with = "serde_regex::deserialize")]
+    #[serde(
+        deserialize_with = "serde_regex::deserialize",
+        serialize_with = "utils::custom_serializer_option_vec_regex"
+    )]
     pub exclude_pattern: Option<Vec<Regex>>,
     pub max_depth: Option<u32>,
     pub follow_symlinks: Option<bool>,
@@ -179,19 +182,3 @@ where
         .map(|p| -> Result<PathBuf, _> { p.shell_expand().map_err(D::Error::custom) })
         .collect()
 }
-
-// fn custom_serializer_option_vec_regex<S>(
-//     value: &Option<Vec<Regex>>,
-//     serializer: S,
-// ) -> Result<S::Ok, S::Error>
-// where
-//     S: Serializer,
-// {
-//     match value {
-//         Some(regexes) => {
-//             let strings: Vec<String> = regexes.iter().map(|r| r.as_str().to_string()).collect();
-//             strings.serialize(serializer)
-//         }
-//         None => serializer.serialize_none(),
-//     }
-// }

@@ -35,7 +35,7 @@ TODO: more info.
 - [X] extend the clone_vars! macro so that it supports cloning with Arc, creating a new var like =arc_{}=. 
   - ideas:
     : clone_vars!((Arc: config)) // => let arc_config = Arc::new(config);
-- [ ] implement Serialization for config, for more reliable integration tests
+- [X] implement Serialization for config, for more reliable integration tests
 - [ ] make a macro to generate config file in fs to then deserialize (also ensures two-way 'se & 'de).
 
 * Refactoring scratch

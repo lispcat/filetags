@@ -41,10 +41,9 @@ pub fn start_watchers_for_each_watch_dir(
     // start watcher for each watch_dir
     for rule_idx in 0..config.rules.len() {
         for watch_idx in 0..config.rules[rule_idx].watch_dirs.len() {
-            clone_vars!(tx, barrier);
-            let config_arc = Arc::clone(config);
+            clone_vars!(tx, barrier, (Arc :: config => arc_config));
             thread::spawn(move || -> anyhow::Result<()> {
-                start_watcher(config_arc, rule_idx, watch_idx, tx, barrier)
+                start_watcher(arc_config, rule_idx, watch_idx, tx, barrier)
             });
         }
     }

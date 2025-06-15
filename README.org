@@ -32,8 +32,11 @@ TODO: more info.
 - [X] during post-serialization of config, create a copy of config with the rule-specific settings replaced with the defaults if none (or similar).
 - [X] go through all source code and rename all dest_dirs/dest_dir/dest to link_dirs/link_dir/link.
 - [X] refactor everything very freely without fear of painful compilation issues (it'll literally only take 2mins, always)
+- [X] extend the clone_vars! macro so that it supports cloning with Arc, creating a new var like =arc_{}=. 
+  - ideas:
+    : clone_vars!((Arc: config)) // => let arc_config = Arc::new(config);
 - [ ] implement Serialization for config, for more reliable integration tests
-  - [ ] make a macro to generate config file in fs to then deserialize (also ensures two-way 'se & 'de).
+- [ ] make a macro to generate config file in fs to then deserialize (also ensures two-way 'se & 'de).
 
 * Refactoring scratch
 

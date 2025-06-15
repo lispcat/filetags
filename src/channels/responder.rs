@@ -6,7 +6,7 @@ use std::{
 use anyhow::Context;
 use crossbeam_channel::Receiver;
 
-use crate::Config;
+use crate::{clone_vars, Config};
 
 use super::{handle_message, Message, Signal};
 
@@ -14,7 +14,7 @@ pub fn start_responder(
     rx: Receiver<Message>,
     config: &Arc<Config>,
 ) -> anyhow::Result<JoinHandle<anyhow::Result<()>>> {
-    let arc_config = Arc::clone(config);
+    clone_vars!((Arc :: config => arc_config));
     let handle = thread::spawn(move || -> anyhow::Result<()> {
         loop {
             let message = rx.recv().context("Responder waiting for Message")?;

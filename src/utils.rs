@@ -86,9 +86,21 @@ macro_rules! enter_span {
 
 #[macro_export]
 macro_rules! clone_vars {
-    ($($var:ident),+) => {
+    ($($arg:tt),+) => {
         $(
-            let $var = $var.clone();
+            clone_vars!(@handle $arg);
         )+
+    };
+
+    (@handle $var:ident) => {
+        let $var = $var.clone();
+    };
+
+    (@handle ($var:ident => $new_var:ident)) => {
+        let $new_var = $var.clone();
+    };
+
+    (@handle ($type:ident :: $var:ident => $new_var:ident)) => {
+        let $new_var = $type::clone($var);
     };
 }

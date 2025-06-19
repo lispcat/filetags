@@ -38,9 +38,9 @@ TODO: more info.
 - [X] implement Serialization for config, for more reliable integration tests
 - [X] make a macro to generate config file in fs to then deserialize (also ensures two-way 'se & 'de).
 
-* Refactoring scratch
+* Notes
 
-** Main
+** Main process
 
 1. args, config_gen
 
@@ -56,7 +56,7 @@ TODO: more info.
 
 7. wait until responder thread completes
 
-** File tree
+** TODO File tree
 
 - channels/
   - actions/
@@ -71,3 +71,49 @@ TODO: more info.
 - logger.rs
 - main.rs
 - utils.rs
+
+** Assurances
+
+- Init:
+  - mandatory clean
+- Startup:
+  - start cleaners
+  - start watchers
+- Test_hook.
+- hang...
+
+
+- Clean operation:
+  - [ ] link_dirs: exists? (create dirs or crash)
+  - for each link_file:
+    - match file type:
+      - cannot get metadata => log error, next.
+      - not a symlink => next.
+      - is a symlink =>
+        - Delete symlink if any:
+          - if doesn't match any regex
+          - if broken symlink
+          - if symlink's target doesn't exist
+          - if symlink's target is not a subdir of any watch_dir
+  - implementation ::
+    - link_dirs_all
+        .for_each(|f| {
+          if !f.exists() (create dir or terminate)
+        });
+    - watch_dirs_all
+        .for_each(|f| {
+          if !f.exists() (log but don't intervene)
+        });
+    - link_dirs_all
+        .map(|d| {
+          WalkDir::new(d).map(|entry| {
+            let entry = entry?;
+            let path = entry.path();
+
+            let file_info = (get file metadata)?;
+            if file_info.file_type().is_symlink() {
+              ...
+            }
+          })
+        });
+

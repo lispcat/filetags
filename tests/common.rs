@@ -24,7 +24,7 @@ pub fn create_test_env() -> (TempDir, PathBuf) {
 
 #[macro_export]
 macro_rules! let_paths {
-    ($(( $var:ident = $base:tt / $file:tt $(: create = $create:literal $(=> $target:tt)?)? )),+ $(,)?) => {
+    ($(( $var:ident = $base:tt / $file:tt $(: create = $create:literal $(-> $target:tt)?)? )),+ $(,)?) => {
         $(
             let $var = $base.join($file);
             $(

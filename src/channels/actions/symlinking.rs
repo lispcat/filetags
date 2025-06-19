@@ -1,4 +1,4 @@
-use std::{fs, os::unix::fs::symlink, path::Path};
+use std::{fs, os::unix::fs::symlink, path::Path, sync::Arc};
 
 use anyhow::Context;
 use notify::{
@@ -6,12 +6,13 @@ use notify::{
     EventKind,
 };
 use tracing::debug;
+use walkdir::WalkDir;
 
 use crate::{
     channels::WatchEvent,
     match_event_kinds, symlink_target,
     utils::{calc_link_from_src_orig, path_matches_any_regex},
-    Config,
+    watch_dir_indices_with_refs, Config,
 };
 
 /// Handle a `notify::Event` received from the crossbeam channel Receiver.
@@ -24,7 +25,7 @@ pub fn handle_event_message(config: &Config, message: &WatchEvent) -> anyhow::Re
             for check_path in &message.event.paths {
                 let rule_idx = message.rule_idx;
                 let watch_idx = message.watch_idx;
-                handle_path(config, check_path, rule_idx, watch_idx)
+                maybe_symlink_path(config, check_path, rule_idx, watch_idx)
                     .context("handling path for notify event")?;
             }
         }
@@ -36,7 +37,7 @@ pub fn handle_event_message(config: &Config, message: &WatchEvent) -> anyhow::Re
 /// Check if the filename of the path matches the specified Regex's, and take action if needed.
 ///
 /// If it matches, create a symlink to the appropriate link dir.
-pub fn handle_path(
+pub fn maybe_symlink_path(
     config: &Config,
     src_path: &Path,
     rule_idx: usize,
@@ -114,6 +115,17 @@ pub fn ensure_is_symlink_and_expected_target(
     //     link_path,
     //     src_path
     // );
+
+    Ok(())
+}
+
+// maybe_symlink for every watch_dir in config.
+pub fn maybe_symlink_all(config: &Arc<Config>) -> anyhow::Result<()> {
+    for (rule_idx, watch_idx, _, watch_dir) in watch_dir_indices_with_refs(config) {
+        for direntry in WalkDir::new(watch_dir) {
+            maybe_symlink_path(config, direntry.unwrap().path(), rule_idx, watch_idx)?;
+        }
+    }
 
     Ok(())
 }

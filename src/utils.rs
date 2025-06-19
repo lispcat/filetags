@@ -1,5 +1,5 @@
 use std::{
-    fs,
+    fs::{self, Metadata},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -9,7 +9,7 @@ use regex::Regex;
 use serde::{Serialize, Serializer};
 use tracing::debug;
 
-use crate::{Config, Message};
+use crate::{Config, Message, Rule};
 
 // generic helpers ////////////////////////////////////////////////////////////
 
@@ -148,5 +148,56 @@ where
             strings.serialize(serializer)
         }
         None => serializer.serialize_none(),
+    }
+}
+
+// to sort ////////////////////////////////////////////////////////////////////
+
+pub fn link_dir_indices(config: &Config) -> impl Iterator<Item = (usize, usize)> + '_ {
+    config
+        .rules
+        .iter()
+        .enumerate()
+        .flat_map(|(rule_idx, rule)| {
+            (0..rule.link_dirs.len()).map(move |link_idx| (rule_idx, link_idx))
+        })
+}
+
+pub fn link_dir_indices_with_refs(
+    config: &Config,
+) -> impl Iterator<Item = (usize, usize, &Rule, &PathBuf)> + '_ {
+    config
+        .rules
+        .iter()
+        .enumerate()
+        .flat_map(|(rule_idx, rule)| {
+            rule.link_dirs
+                .iter()
+                .enumerate()
+                .map(move |(link_idx, link_dir)| (rule_idx, link_idx, rule, link_dir))
+        })
+}
+
+pub fn watch_dir_indices_with_refs(
+    config: &Config,
+) -> impl Iterator<Item = (usize, usize, &Rule, &PathBuf)> + '_ {
+    config
+        .rules
+        .iter()
+        .enumerate()
+        .flat_map(|(rule_idx, rule)| {
+            rule.watch_dirs
+                .iter()
+                .enumerate()
+                .map(move |(watch_idx, watch_dir)| (rule_idx, watch_idx, rule, watch_dir))
+        })
+}
+
+pub fn delete_symlink(path: &Path, metadata: &Metadata) -> anyhow::Result<()> {
+    if metadata.file_type().is_symlink() {
+        fs::remove_file(path)?;
+        Ok(())
+    } else {
+        anyhow::bail!("Not a symlink!!!: {:?}", path)
     }
 }

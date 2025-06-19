@@ -5,12 +5,12 @@ pub mod watcher;
 use std::sync::Arc;
 
 use actions::{
-    cleaning::{clean_and_symlink_all, clean_dir},
+    cleaning::{clean_all, clean_dir},
     fs_asserts::maybe_create_dirs_all,
-    symlinking::handle_event_message,
+    symlinking::{handle_event_message, maybe_symlink_all},
 };
 use anyhow::Context;
-use notify::Event;
+use watcher::WatchEvent;
 
 use crate::Config;
 
@@ -20,19 +20,11 @@ use crate::Config;
 #[derive(Clone, Debug)]
 pub enum Message {
     CreateNecessaryDirs,
-    Watch(WatchEvent),
-    CleanDir(usize, usize),
     CleanAll,
+    MaybeSymlinkAll,
+    CleanDir(usize, usize),
+    Watch(WatchEvent),
     Shutdown,
-}
-
-/// Used it `Message::Watch(WatchEvent)`.
-/// Provides needed additional info for the responder and its invoked symlinker actions.
-#[derive(Clone, Debug)]
-pub struct WatchEvent {
-    pub rule_idx: usize,
-    pub watch_idx: usize,
-    pub event: Event,
 }
 
 // Message Handling ///////////////////////////////////////////////////////////
@@ -41,9 +33,10 @@ pub struct WatchEvent {
 pub fn handle_message(message: &Message, config: &Arc<Config>) -> anyhow::Result<Option<Signal>> {
     match message {
         Message::CreateNecessaryDirs => maybe_create_dirs_all(config)?,
-        Message::Watch(event) => handle_event_message(config, event)?,
-        Message::CleanAll => clean_and_symlink_all(config).context("cleaning all")?,
+        Message::CleanAll => clean_all(config).context("cleaning all")?,
+        Message::MaybeSymlinkAll => maybe_symlink_all(config).context("maybe symlinking all")?,
         Message::CleanDir(rule_idx, link_idx) => clean_dir(config, *rule_idx, *link_idx)?,
+        Message::Watch(event) => handle_event_message(config, event)?,
         Message::Shutdown => return Ok(Some(Signal::ShutdownSignal)),
     }
     Ok(None)

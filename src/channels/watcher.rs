@@ -11,9 +11,16 @@ use notify::{
 };
 use tracing::debug;
 
-use crate::{
-    channels::WatchEvent, clone_vars, match_event_kinds, num_watch_dirs_for_config, Config, Message,
-};
+use crate::{clone_vars, match_event_kinds, num_watch_dirs_for_config, Config, Message};
+
+/// Used in `Message::Watch(WatchEvent)`.
+/// Provides needed additional info for the responder and its invoked symlinker actions.
+#[derive(Clone, Debug)]
+pub struct WatchEvent {
+    pub rule_idx: usize,
+    pub watch_idx: usize,
+    pub event: Event,
+}
 
 /// Set up watchers for each watch_dir
 pub fn start_watchers(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {

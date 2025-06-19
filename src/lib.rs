@@ -59,6 +59,9 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     // clean all broken or innapropriate links in link_dirs
     tx.send(Message::CleanAll)?;
 
+    // maybe create symlinks for what's appropriate
+    tx.send(Message::MaybeSymlinkAll)?;
+
     // start all link cleaners
     start_cleaners(&tx, &config).context("starting cleaners")?;
 

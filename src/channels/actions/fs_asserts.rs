@@ -1,25 +1,30 @@
 use std::{fs, path::Path, sync::Arc};
 
 use anyhow::Context;
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::{enter_span, Config, Rule};
+
+macro_rules! watch_dirs_indices {
+    ($config:tt) => {
+        $config.rules.iter().flat_map(|rule| {
+            rule.watch_dirs
+                .iter()
+                .map(move |watch_dir| (rule, watch_dir))
+        })
+    };
+}
 
 /// Initialize directories and catch errors early to prevent mild catastrophes.
 pub fn maybe_create_dirs_all(config: &Arc<Config>) -> anyhow::Result<()> {
     let _span = enter_span!(DEBUG, "init_dirs");
 
-    // for each watch_dir...
-    for rule in &config.rules {
-        for watch_dir in &rule.watch_dirs {
-            // check if watch_dir doesn't exist.
-            if !watch_dir.try_exists()? {
-                debug!(?watch_dir, "path to watch not found");
-
-                handle_missing_dir(watch_dir, rule, config)?;
-            }
+    for (rule, watch_dir) in watch_dirs_indices!(config) {
+        if !watch_dir.try_exists()? {
+            handle_missing_dir(watch_dir, rule, config)?;
         }
     }
+
     Ok(())
 }
 

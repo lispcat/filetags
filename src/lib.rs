@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use channels::{
-    actions::cleaning::start_cleaners, responder::start_responder, watcher::start_watchers,
-};
+use channels::{responder::start_responder, watcher::start_watchers};
 use crossbeam_channel::{Receiver, Sender};
 use tracing::debug;
 
@@ -15,10 +13,16 @@ mod utils;
 
 // re-export
 pub use args::*;
-pub use channels::Message;
+pub use channels::*;
 pub use config::*;
 pub use logger::*;
 pub use utils::*;
+
+use crate::actions::{
+    cleaning::{periodic_cleaner::start_symlink_cleaners, query_symlink_clean_all},
+    filesystem_asserts::query_create_necessary_dirs,
+    symlinking::query_symlink_create_all,
+};
 
 // TODO:
 // - prevent recursive searching when LinkDir is within WatchDir or symlinking dirs.
@@ -46,31 +50,30 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     rx: Receiver<Message>,
     test_hook: Option<F>,
 ) -> anyhow::Result<()> {
-    let _span = enter_span!(DEBUG, "running");
+    span_enter!(DEBUG, "running");
     debug!("Config: {:?}", config);
 
     // start responder
-    // (processes one event at a time until process terminated)
     let responder_handle = start_responder(rx, &config).context("starting responder")?;
 
     // create all necessary dirs
-    tx.send(Message::CreateNecessaryDirs)?;
+    query_create_necessary_dirs(&tx)?;
 
     // clean all broken or innapropriate links in link_dirs
-    tx.send(Message::CleanAll)?;
+    query_symlink_clean_all(&tx)?;
 
-    // maybe create symlinks for what's appropriate
-    tx.send(Message::MaybeSymlinkAll)?;
+    // maybe create symlinks as appropriate
+    query_symlink_create_all(&tx)?;
 
     // start all link cleaners
-    start_cleaners(&tx, &config).context("starting cleaners")?;
+    start_symlink_cleaners(&tx, &config).context("starting cleaners")?;
 
     // setup all watchers
     start_watchers(&tx, &config).context("starting watchers")?;
 
     // maybe run test hook (for integration tests)
     test_hook.inspect(|hook_fn| {
-        let _span = enter_span!(DEBUG, "test_hook");
+        span_enter!(DEBUG, "test_hook");
         hook_fn();
     });
 

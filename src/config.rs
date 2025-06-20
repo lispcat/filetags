@@ -59,7 +59,7 @@ pub struct Rule {
 #[serde(default, deny_unknown_fields)]
 pub struct RuleSettings {
     #[default(true)]
-    pub create_missing_directories: bool,
+    pub create_missing_dirs: bool,
 
     #[default(vec![])]
     #[serde(with = "serde_regex")]
@@ -88,7 +88,7 @@ pub struct RawConfig {
 #[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RawRuleSettings {
-    pub create_missing_directories: Option<bool>,
+    pub create_missing_dirs: Option<bool>,
     #[serde(
         deserialize_with = "serde_regex::deserialize",
         serialize_with = "utils::custom_serializer_option_vec_regex"
@@ -135,7 +135,7 @@ impl<'de> Deserialize<'de> for Config {
                         raw_config,
                         raw_rule_settings,
                         (
-                            create_missing_directories,
+                            create_missing_dirs,
                             exclude_pattern,
                             max_depth,
                             follow_symlinks,

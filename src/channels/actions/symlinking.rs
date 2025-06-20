@@ -1,6 +1,12 @@
-use std::{fs, os::unix::fs::symlink, path::Path, sync::Arc};
+use std::{
+    fs::{self, Metadata},
+    os::unix::fs::symlink,
+    path::Path,
+    sync::Arc,
+};
 
 use anyhow::Context;
+use crossbeam_channel::Sender;
 use notify::{
     event::{ModifyKind, RenameMode},
     EventKind,
@@ -9,23 +15,36 @@ use tracing::debug;
 use walkdir::WalkDir;
 
 use crate::{
-    channels::WatchEvent,
-    match_event_kinds, symlink_target,
+    delete_symlink, get_basename, match_event_kinds, symlink_target,
     utils::{calc_link_from_src_orig, path_matches_any_regex},
-    watch_dir_indices_with_refs, Config,
+    watch_dir_indices_with_refs, Config, Message, WatchEvent,
 };
 
-/// Handle a `notify::Event` received from the crossbeam channel Receiver.
+/// Shorthand for sending a query to the Receiver to symlink_create_all.
+pub fn query_symlink_create_all(tx: &Sender<Message>) -> anyhow::Result<()> {
+    tx.send(Message::SymlinkCreateAll)
+        .context("sending message")
+}
+
+/// Runs `symlink_create` for every watch_dir in Config.
+pub fn symlink_create_all(config: &Arc<Config>) -> anyhow::Result<()> {
+    for (rule_idx, watch_idx, _, watch_dir) in watch_dir_indices_with_refs(config) {
+        for direntry in WalkDir::new(watch_dir) {
+            symlink_create(config, direntry.unwrap().path(), rule_idx, watch_idx)?;
+        }
+    }
+
+    Ok(())
+}
+/// Handle a notify event.
+/// Called from the Receiver.
 ///
-/// When a file creation or filename modification `notify::Event` is received,
-/// run `handle_path` to check the filename and take action if needed.
-pub fn handle_event_message(config: &Config, message: &WatchEvent) -> anyhow::Result<()> {
+/// Runs `maybe_symlink_path` if the notify event matches `match_event_kinds!()`.
+pub fn handle_notify_event(config: &Config, message: &WatchEvent) -> anyhow::Result<()> {
     match message.event.kind {
         match_event_kinds!() => {
             for check_path in &message.event.paths {
-                let rule_idx = message.rule_idx;
-                let watch_idx = message.watch_idx;
-                maybe_symlink_path(config, check_path, rule_idx, watch_idx)
+                symlink_create(config, check_path, message.rule_idx, message.watch_idx)
                     .context("handling path for notify event")?;
             }
         }
@@ -34,10 +53,11 @@ pub fn handle_event_message(config: &Config, message: &WatchEvent) -> anyhow::Re
     Ok(())
 }
 
-/// Check if the filename of the path matches the specified Regex's, and take action if needed.
+/// Maybe create a symlink to the given path.
 ///
-/// If it matches, create a symlink to the appropriate link dir.
-pub fn maybe_symlink_path(
+/// First it checks if it matches any of the regexes. If it matches, then create a symlink
+/// if not already created.
+pub fn symlink_create(
     config: &Config,
     src_path: &Path,
     rule_idx: usize,
@@ -53,79 +73,96 @@ pub fn maybe_symlink_path(
         // For every link_dir, check if the expected link_path has a symlink, and if not,
         // create one.
         for link in &rule.link_dirs {
-            // ensure that the link_dir exists
+            // error if the link_dir doesn't exist
             anyhow::ensure!(
                 link.exists(),
-                "Error: link ({:?}) does not exist... was it deleted?",
+                "link ({:?}) does not exist... was it deleted?",
                 link
             );
 
-            // where the link_path should be
-            let link_path = calc_link_from_src_orig(src_path, watch, link)?;
+            // where the symlink_path should be
+            let symlink_path = calc_link_from_src_orig(src_path, watch, link)?;
 
-            if link_path.exists() {
-                // file exists, so now check if it's a symlink and points to src_path
-                ensure_is_symlink_and_expected_target(&link_path, src_path)?;
-            } else {
-                // file doesn't exist, so create a symlink to there
-                symlink(src_path, link_path).context("creating symlink")?;
-            }
+            // try symlinking
+            try_symlinking(&symlink_path, src_path)?;
         }
     }
 
     Ok(())
 }
 
-pub fn ensure_is_symlink_and_expected_target(
-    link_path: &Path,
-    src_path: &Path,
-) -> anyhow::Result<()> {
-    // something exists here, so ensure that the file at link_path is a symlink
-    let is_symlink = fs::symlink_metadata(link_path)?.file_type().is_symlink();
-    anyhow::ensure!(
-        is_symlink,
-        "Error: something already exists at link_path ({:?}) and it's not a symlink?!",
-        link_path
-    );
-
-    // ensure the existing symlink points to the src_path
-    match symlink_target(link_path)? {
-        None => {
-            debug!("Symlink is broken, deleting symlink: {:?}", link_path);
-            fs::remove_file(link_path)?;
+/// Try creating a symlink at symlink_path to src_path.
+///
+/// If a symlink already exists at symlink_path, `validate_existing_symlink`.
+/// Otherwise, create a symlink.
+fn try_symlinking(symlink_path: &Path, src_path: &Path) -> anyhow::Result<()> {
+    // check if a file exists here
+    if symlink_path.exists() {
+        // check if that file is a symlink
+        let metadata = fs::symlink_metadata(symlink_path)?;
+        if metadata.file_type().is_symlink() {
+            // a symlink already exists here. we expect it to point to the src_path...
+            // but what if it doesn't?
+            validate_existing_symlink(symlink_path, src_path, &metadata)?;
+        } else {
+            anyhow::bail!(
+                "failed to create symlink at {:?} with target {:?}. a non-symlink file already exists at symlink path.",
+                symlink_path,
+                src_path
+            )
         }
+    } else {
+        // file doesn't exist, so create a symlink to there
+        symlink(src_path, symlink_path).context("creating symlink")?;
+    }
+
+    Ok(())
+}
+
+/// Validate that the existing symlink works and points to the correct target.
+///
+/// If the symlink is broken, delete it.
+/// If it doesn't point to the correct target, modify the filename slightly and try again by
+/// running `try_symlinking` (recursive).
+pub fn validate_existing_symlink(
+    symlink_path: &Path,
+    src_path: &Path,
+    metadata: &Metadata,
+) -> anyhow::Result<()> {
+    match symlink_target(symlink_path)? {
+        // symlink is broken
+        None => {
+            debug!("Symlink is broken, deleting symlink: {:?}", symlink_path);
+            delete_symlink(symlink_path, metadata)?;
+        }
+        // symlink target exists
         Some(symlink_target) => {
-            if src_path != symlink_target {
-                debug!(
-                    "ERROR: symlink at link_path ({:?}) doesn't point to src_path ({:?}), deleting symlink",
-                    link_path, src_path
-                );
-                fs::remove_file(link_path)?;
-            } else {
+            // check if src_path points to target
+            if src_path == symlink_target {
+                // src_path does indeed point to target!
                 debug!(
                     "Symlink points to the correct source file! {:?}, {:?}, {:?}",
-                    src_path, symlink_target, link_path
+                    src_path, symlink_target, symlink_path
                 );
+            } else {
+                // doesn't point to target...
+                debug!(
+                    "symlink at link_path {:?} doesn't point to src_path {:?}",
+                    symlink_path, src_path
+                );
+                // rename by prepending with "0_"
+                let renamed_symlink_path =
+                    symlink_target.with_file_name(format!("0_{}", get_basename(symlink_path)?));
+                debug!(
+                    "renamed symlink path {:?} to {:?}",
+                    symlink_path, renamed_symlink_path
+                );
+
+                // try symlinking again... (recursive)
+                try_symlinking(&renamed_symlink_path, src_path)?;
             }
         }
     };
-    // anyhow::ensure!(
-    //     symlink_points_to_src,
-    //     "Error: existing symlink at link_path ({:?}) doesn't point to src_path ({:?})",
-    //     link_path,
-    //     src_path
-    // );
-
-    Ok(())
-}
-
-// maybe_symlink for every watch_dir in config.
-pub fn maybe_symlink_all(config: &Arc<Config>) -> anyhow::Result<()> {
-    for (rule_idx, watch_idx, _, watch_dir) in watch_dir_indices_with_refs(config) {
-        for direntry in WalkDir::new(watch_dir) {
-            maybe_symlink_path(config, direntry.unwrap().path(), rule_idx, watch_idx)?;
-        }
-    }
 
     Ok(())
 }

@@ -11,58 +11,42 @@ use notify::{
 };
 use tracing::debug;
 
-use crate::{clone_vars, match_event_kinds, num_watch_dirs_for_config, Config, Message};
+use crate::{
+    clone_vars, match_event_kinds, sum_all_watch_dirs, watch_dir_indices, with_barrier, Config,
+    WatchEvent,
+};
 
-/// Used in `Message::Watch(WatchEvent)`.
-/// Provides needed additional info for the responder and its invoked symlinker actions.
-#[derive(Clone, Debug)]
-pub struct WatchEvent {
-    pub rule_idx: usize,
-    pub watch_idx: usize,
-    pub event: Event,
-}
+use super::Message;
 
-/// Set up watchers for each watch_dir
+/// Start the notify watchers.
 pub fn start_watchers(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
-    // set up barrier with total sum of watch dirs
-    let barrier = Arc::new(Barrier::new(1 + num_watch_dirs_for_config(config)?));
-
-    // start an async watcher for each watch_dir
-    start_watchers_for_each_watch_dir(config, tx, &barrier)?;
-
-    // pause execution until all watchers have started
-    barrier.wait();
+    with_barrier!(sum_all_watch_dirs(config), |barrier| {
+        start_watchers_for_each_watch_dir(config, tx, barrier)
+    });
 
     Ok(())
 }
 
-/// For each watch dir, spawn a notify watcher, where every `notify::Event` the watcher creates
-/// is forwarded to its corresponding crossbeam channel Receiver from the calling function.
-///
-/// Each watcher is physically started by running the `start_watcher` function.
+/// Spawn a notify watcher for each watch_dir.
 pub fn start_watchers_for_each_watch_dir(
     config: &Arc<Config>,
     tx: &Sender<Message>,
     barrier: &Arc<Barrier>,
 ) -> anyhow::Result<()> {
     // start watcher for each watch_dir
-    for rule_idx in 0..config.rules.len() {
-        for watch_idx in 0..config.rules[rule_idx].watch_dirs.len() {
-            clone_vars!(tx, barrier, (Arc :: config => arc_config));
-            thread::spawn(move || -> anyhow::Result<()> {
-                start_watcher(arc_config, rule_idx, watch_idx, tx, barrier)
-            });
-        }
+    for (rule_idx, watch_idx) in watch_dir_indices(config) {
+        clone_vars!(tx, barrier, (Arc :: config => arc_config));
+        thread::spawn(move || -> anyhow::Result<()> {
+            start_watcher(arc_config, rule_idx, watch_idx, tx, barrier)
+        });
     }
     Ok(())
 }
 
-/// Starts a notify watcher, where every `notify::Event` the watcher creates is forwarded
-/// to its corresponding crossbeam channel Receiver.
+/// Starts a notify watcher.
+/// For every Event that the notify watcher produces, it's forwarded to the Reciver.
 ///
-/// This function has a never-ending loop at the end to keep the watcher alive.
-/// This function is meant to be ran as a new thread, specifically in the function
-/// `start_watchers_for_each_watch_dir`.
+/// This function is meant to be ran as a new thread.
 fn start_watcher(
     config: Arc<Config>,
     rule_idx: usize,
@@ -73,6 +57,7 @@ fn start_watcher(
     let rule = &config.rules[rule_idx];
     let watch = &rule.watch_dirs[watch_idx];
 
+    // create notify watcher
     let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
         Ok(event) => match event.kind {
             // only send message if filename modification or file creation
@@ -98,10 +83,10 @@ fn start_watcher(
     debug!("Starting watcher at: {:?}", watch);
     watcher.watch(watch, RecursiveMode::Recursive)?;
 
-    // watcher set up, increment barrier
+    // wait until all watchers set up
     barrier.wait();
 
-    // Keep the watcher alive - it will send events via the closure
+    // Keep the watcher alive
     loop {
         thread::sleep(Duration::from_secs(1));
     }

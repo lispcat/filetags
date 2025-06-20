@@ -35,34 +35,94 @@ macro_rules! clone_vars {
     };
 }
 
+pub fn link_dir_indices(config: &Config) -> impl Iterator<Item = (usize, usize)> + '_ {
+    config
+        .rules
+        .iter()
+        .enumerate()
+        .flat_map(|(rule_idx, rule)| {
+            (0..rule.link_dirs.len()).map(move |link_idx| (rule_idx, link_idx))
+        })
+}
+
+pub fn watch_dir_indices(config: &Config) -> impl Iterator<Item = (usize, usize)> + '_ {
+    config
+        .rules
+        .iter()
+        .enumerate()
+        .flat_map(|(rule_idx, rule)| {
+            (0..rule.watch_dirs.len()).map(move |watch_idx| (rule_idx, watch_idx))
+        })
+}
+
+pub fn link_dir_indices_with_refs(
+    config: &Config,
+) -> impl Iterator<Item = (usize, usize, &Rule, &PathBuf)> + '_ {
+    config
+        .rules
+        .iter()
+        .enumerate()
+        .flat_map(|(rule_idx, rule)| {
+            rule.link_dirs
+                .iter()
+                .enumerate()
+                .map(move |(link_idx, link_dir)| (rule_idx, link_idx, rule, link_dir))
+        })
+}
+
+pub fn watch_dir_indices_with_refs(
+    config: &Config,
+) -> impl Iterator<Item = (usize, usize, &Rule, &PathBuf)> + '_ {
+    config
+        .rules
+        .iter()
+        .enumerate()
+        .flat_map(|(rule_idx, rule)| {
+            rule.watch_dirs
+                .iter()
+                .enumerate()
+                .map(move |(watch_idx, watch_dir)| (rule_idx, watch_idx, rule, watch_dir))
+        })
+}
+
 // Config helpers /////////////////////////////////////////////////////////////
 
 pub type ConfigArc = Arc<Config>;
 
 /// Calculates the number of watch_dirs within Config.
-pub fn num_watch_dirs_for_config(config: &ConfigArc) -> anyhow::Result<usize> {
-    Ok(config
+pub fn sum_all_watch_dirs(config: &ConfigArc) -> usize {
+    config
         .rules
         .iter()
         .map(|r| r.watch_dirs.len())
-        .sum::<usize>())
+        .sum::<usize>()
+}
+
+/// Calculates the number of watch_dirs within Config.
+pub fn sum_all_rules(config: &ConfigArc) -> usize {
+    config.rules.len()
 }
 
 // fs helpers /////////////////////////////////////////////////////////////////
 
-/// Returns whether a path is a subdir of any from a list of paths.
-pub fn path_is_rec_subdir_of_any(path: &Path, many_dirs: &[PathBuf]) -> anyhow::Result<bool> {
-    Ok(many_dirs.iter().any(|d| path.starts_with(d)))
-}
-
-/// Returns whether a path filename matches a regex.
-pub fn path_matches_any_regex(path: &Path, regexes: &[Regex]) -> anyhow::Result<bool> {
+pub fn get_basename(path: &Path) -> anyhow::Result<&str> {
     let raw_basename = path
         .file_name()
         .with_context(|| format!("getting basename: {:?}", path))?;
     let basename = raw_basename
         .to_str()
-        .with_context(|| format!("parsing basename to UTF-8: {:?}", raw_basename))?;
+        .with_context(|| format!("parsing basename to UTF-8 str: {:?}", raw_basename))?;
+    Ok(basename)
+}
+
+/// Returns whether a path is a subdir of any from a list of paths.
+pub fn path_is_under_any_dirs(path: &Path, many_dirs: &[PathBuf]) -> anyhow::Result<bool> {
+    Ok(many_dirs.iter().any(|d| path.starts_with(d)))
+}
+
+/// Returns whether a path filename matches a regex.
+pub fn path_matches_any_regex(path: &Path, regexes: &[Regex]) -> anyhow::Result<bool> {
+    let basename = get_basename(path)?;
 
     Ok(regexes.iter().any(|r| r.is_match(basename)))
 }
@@ -99,6 +159,17 @@ pub fn calc_link_from_src_orig(
     Ok(link)
 }
 
+/// Deletes the symlink at the specified path.
+/// If it's not a symlink, return an error.
+pub fn delete_symlink(path: &Path, metadata: &Metadata) -> anyhow::Result<()> {
+    if metadata.file_type().is_symlink() {
+        fs::remove_file(path)?;
+        Ok(())
+    } else {
+        anyhow::bail!("Not a symlink!!!: {:?}", path)
+    }
+}
+
 // channel helpers ////////////////////////////////////////////////////////////
 
 /// Sends a shutdown signal to the corresponding Receiver.
@@ -122,14 +193,14 @@ macro_rules! match_event_kinds {
 
 /// Creates and enters a new Tracing span.
 #[macro_export]
-macro_rules! enter_span {
-    ($level:ident, $($args:expr)+) => {
-        tracing::span!(tracing::Level::$level,
+macro_rules! span_enter {
+    ($level:ident, $($args:expr)+) => {{
+        let _span = tracing::span!(tracing::Level::$level,
             $(
                 $args
             )+
-        ).entered()
-    };
+        ).entered();
+    }};
 }
 
 // serde_regex addons /////////////////////////////////////////////////////////
@@ -151,53 +222,15 @@ where
     }
 }
 
+// misc ///////////////////////////////////////////////////////////////////////
+
+#[macro_export]
+macro_rules! with_barrier {
+    ($count:expr, $body:expr) => {{
+        let barrier = Arc::new(Barrier::new(1 + $count));
+        $body(&barrier)?;
+        barrier.wait();
+    }};
+}
+
 // to sort ////////////////////////////////////////////////////////////////////
-
-pub fn link_dir_indices(config: &Config) -> impl Iterator<Item = (usize, usize)> + '_ {
-    config
-        .rules
-        .iter()
-        .enumerate()
-        .flat_map(|(rule_idx, rule)| {
-            (0..rule.link_dirs.len()).map(move |link_idx| (rule_idx, link_idx))
-        })
-}
-
-pub fn link_dir_indices_with_refs(
-    config: &Config,
-) -> impl Iterator<Item = (usize, usize, &Rule, &PathBuf)> + '_ {
-    config
-        .rules
-        .iter()
-        .enumerate()
-        .flat_map(|(rule_idx, rule)| {
-            rule.link_dirs
-                .iter()
-                .enumerate()
-                .map(move |(link_idx, link_dir)| (rule_idx, link_idx, rule, link_dir))
-        })
-}
-
-pub fn watch_dir_indices_with_refs(
-    config: &Config,
-) -> impl Iterator<Item = (usize, usize, &Rule, &PathBuf)> + '_ {
-    config
-        .rules
-        .iter()
-        .enumerate()
-        .flat_map(|(rule_idx, rule)| {
-            rule.watch_dirs
-                .iter()
-                .enumerate()
-                .map(move |(watch_idx, watch_dir)| (rule_idx, watch_idx, rule, watch_dir))
-        })
-}
-
-pub fn delete_symlink(path: &Path, metadata: &Metadata) -> anyhow::Result<()> {
-    if metadata.file_type().is_symlink() {
-        fs::remove_file(path)?;
-        Ok(())
-    } else {
-        anyhow::bail!("Not a symlink!!!: {:?}", path)
-    }
-}

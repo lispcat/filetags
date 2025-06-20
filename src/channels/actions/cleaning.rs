@@ -1,71 +1,42 @@
+pub mod periodic_cleaner;
+
 use std::{
     fs::{self},
     path::Path,
-    sync::{Arc, Barrier},
-    thread,
-    time::Duration,
+    sync::Arc,
 };
 
 use anyhow::Context;
 use crossbeam_channel::Sender;
-use tracing::debug;
 use walkdir::WalkDir;
 
 use crate::{
-    clone_vars, delete_symlink, link_dir_indices, path_is_rec_subdir_of_any, symlink_target,
+    delete_symlink, link_dir_indices, path_is_under_any_dirs, symlink_target,
     utils::path_matches_any_regex, Config, Message, Rule,
 };
 
-pub fn start_cleaners(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
-    // set up barrier with total sum of TODO
-    let barrier = Arc::new(Barrier::new(config.rules.iter().len() + 1));
+/// Shorthand for sending a query to the Receiver to `symlink_create_all`.
+pub fn query_symlink_clean_all(tx: &Sender<Message>) -> anyhow::Result<()> {
+    tx.send(Message::SymlinkCreateAll)
+        .context("sending message")
+}
 
-    // start an async cleaner for each rule
-    start_cleaner_for_each_rule(tx, config, &barrier)?;
-
-    // pause execution until all cleaners started
-    barrier.wait();
-    debug!("Cleaner Barrier passed!");
+/// Runs `symlink_clean_dir` for every link_dir in config.
+/// Ran from Receiver.
+pub fn symlink_clean_all(config: &Arc<Config>) -> anyhow::Result<()> {
+    for (rule_idx, link_idx) in link_dir_indices(config) {
+        symlink_clean_dir(config, rule_idx, link_idx)?;
+    }
 
     Ok(())
 }
 
-fn start_cleaner_for_each_rule(
-    tx: &Sender<Message>,
+/// Recursively cleans symlinks at the specified link_dir.
+pub fn symlink_clean_dir(
     config: &Arc<Config>,
-    barrier: &Arc<Barrier>,
-) -> anyhow::Result<()> {
-    for (rule_idx, rule) in config.rules.iter().enumerate() {
-        if let Some(clean_interval) = rule.settings.clean_interval {
-            clone_vars!((Arc :: config => arc_config), tx, barrier);
-            thread::spawn(move || -> anyhow::Result<()> {
-                start_cleaner(arc_config, rule_idx, tx, barrier, clean_interval)
-            });
-        }
-    }
-    Ok(())
-}
-
-fn start_cleaner(
-    config: Arc<Config>,
     rule_idx: usize,
-    tx: Sender<Message>,
-    barrier: Arc<Barrier>,
-    clean_interval: u32,
+    link_idx: usize,
 ) -> anyhow::Result<()> {
-    barrier.wait();
-    loop {
-        let rule = &config.rules[rule_idx];
-        for link_idx in 0..rule.link_dirs.len() {
-            tx.send(Message::CleanDir(rule_idx, link_idx))
-                .context("sending message CleanDir")?;
-        }
-
-        thread::sleep(Duration::from_secs(clean_interval.into()));
-    }
-}
-
-pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyhow::Result<()> {
     let rule = &config.rules[rule_idx];
     let link_dir = &rule.link_dirs[link_idx];
 
@@ -86,15 +57,24 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyh
     Ok(())
 }
 
-pub fn invalid_symlink(path: &Path, rule: &Rule) -> anyhow::Result<bool> {
+/// Identifies whether the symlink at the path is invalid.
+///
+/// It checks the following:
+/// - does the path match any of the regexes?
+/// - is the symlink broken?
+/// - is the symlink_target under any of the watch_dirs?
+///
+/// Note that this function does not check whether the file at the path is a symlink or not.
+/// So do that validation beforehand.
+fn invalid_symlink(path: &Path, rule: &Rule) -> anyhow::Result<bool> {
     // pattern doesnt match any regex
     if !path_matches_any_regex(path, &rule.regex).context("matching regexes")? {
         return Ok(true);
     }
 
     if let Some(symlink_target) = symlink_target(path).context("getting symlink target")? {
-        // symlink_target is not a subdir of any watch_dir
-        if !path_is_rec_subdir_of_any(&symlink_target, &rule.watch_dirs)? {
+        // is symlink_target is not under any watch_dirs?
+        if !path_is_under_any_dirs(&symlink_target, &rule.watch_dirs)? {
             return Ok(true);
         }
     } else {
@@ -103,13 +83,4 @@ pub fn invalid_symlink(path: &Path, rule: &Rule) -> anyhow::Result<bool> {
     }
 
     Ok(false)
-}
-
-// clean_dir for every link_dir in config.
-pub fn clean_all(config: &Arc<Config>) -> anyhow::Result<()> {
-    for (rule_idx, link_idx) in link_dir_indices(config) {
-        clean_dir(config, rule_idx, link_idx)?;
-    }
-
-    Ok(())
 }

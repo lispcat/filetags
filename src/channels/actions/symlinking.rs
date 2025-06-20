@@ -43,6 +43,7 @@ pub fn symlink_create_all(config: &Arc<Config>) -> anyhow::Result<()> {
 pub fn handle_notify_event(config: &Config, message: &WatchEvent) -> anyhow::Result<()> {
     match message.event.kind {
         match_event_kinds!() => {
+            debug!("Received new notify event!: {:?}", message.event.kind);
             for check_path in &message.event.paths {
                 symlink_create(config, check_path, message.rule_idx, message.watch_idx)
                     .context("handling path for notify event")?;
@@ -70,21 +71,23 @@ pub fn symlink_create(
     if path_matches_any_regex(src_path, regexes)? {
         debug!("Regex matches! {:?}", src_path);
 
-        // For every link_dir, check if the expected link_path has a symlink, and if not,
-        // create one.
-        for link in &rule.link_dirs {
-            // error if the link_dir doesn't exist
-            anyhow::ensure!(
-                link.exists(),
-                "link ({:?}) does not exist... was it deleted?",
-                link
-            );
+        if fs::metadata(src_path)?.is_file() {
+            // For every link_dir, check if the expected link_path has a symlink, and if not,
+            // create one.
+            for link in &rule.link_dirs {
+                // error if the link_dir doesn't exist
+                anyhow::ensure!(
+                    link.exists(),
+                    "link ({:?}) does not exist... was it deleted?",
+                    link
+                );
 
-            // where the symlink_path should be
-            let symlink_path = calc_link_from_src_orig(src_path, watch, link)?;
+                // where the symlink_path should be
+                let symlink_path = calc_link_from_src_orig(src_path, watch, link)?;
 
-            // try symlinking
-            try_symlinking(&symlink_path, src_path)?;
+                // try symlinking
+                try_symlinking(&symlink_path, src_path)?;
+            }
         }
     }
 
@@ -113,7 +116,11 @@ fn try_symlinking(symlink_path: &Path, src_path: &Path) -> anyhow::Result<()> {
         }
     } else {
         // file doesn't exist, so create a symlink to there
-        symlink(src_path, symlink_path).context("creating symlink")?;
+        fs::create_dir_all(symlink_path.parent().context("getting parent of path")?)
+            .context("creating parent dirs")?;
+        symlink(src_path, symlink_path).with_context(|| {
+            format!("creating symlink from {:?} to {:?}", symlink_path, src_path)
+        })?;
     }
 
     Ok(())

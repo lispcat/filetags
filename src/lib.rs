@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use channels::{responder::start_responder, watcher::start_watchers};
+use clap::Parser;
 use crossbeam_channel::{Receiver, Sender};
+use systemd::daemon;
 use tracing::debug;
 
 mod args;
@@ -51,7 +53,7 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     test_hook: Option<F>,
 ) -> anyhow::Result<()> {
     span_enter!(DEBUG, "running");
-    debug!("Config: {:?}", config);
+    debug!("Config: {:#?}", config);
 
     // start responder
     let responder_handle = start_responder(rx, &config).context("starting responder")?;
@@ -76,6 +78,11 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
         span_enter!(DEBUG, "test_hook");
         hook_fn();
     });
+
+    // if running as a systemd service, notify systemd that the service is ready
+    if config.misc.systemd_service {
+        daemon::notify(false, [(daemon::STATE_READY, "1")].iter())?;
+    }
 
     // block this thread until the responder thread completes
     responder_handle

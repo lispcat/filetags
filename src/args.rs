@@ -5,19 +5,24 @@ use std::{env, path::PathBuf};
 #[derive(Debug, Parser, SmartDefault)]
 #[command(author, version, about)]
 pub struct Args {
+    /// Path to config file
     #[arg(
         short,
         long = "config",
         default_value_os_t = default_config_path(),
     )]
-    /// Path to config file
     pub config_path: PathBuf,
+
+    /// Whether to run as systemd service
+    #[arg(long = "systemd")]
+    pub as_systemd_service: bool,
 }
-impl Args {
-    pub(crate) fn parse() -> Args {
-        todo!()
-    }
-}
+
+// impl Args {
+//     pub(crate) fn parse() -> Args {
+//         todo!()
+//     }
+// }
 
 fn default_config_path() -> PathBuf {
     let config_dir = env::var_os("XDG_CONFIG_HOME")

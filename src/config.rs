@@ -15,15 +15,27 @@ use crate::{args::Args, utils};
 #[derive(SmartDefault, Debug, Clone, Serialize)]
 pub struct Config {
     pub rules: Vec<Rule>,
+    pub misc: MiscSettings,
 }
 
 impl Config {
     pub fn create(args: &Args) -> anyhow::Result<Arc<Self>> {
         let path: PathBuf = args.config_path.clone();
         let contents: String = fs::read_to_string(path).context("reading config file")?;
-        let config: Self = serde_yml::from_str(&contents)?;
+        let mut config: Self = serde_yml::from_str(&contents)?;
+        config.misc.systemd_service = args.as_systemd_service;
+
         Ok(Arc::new(config))
     }
+}
+
+// misc settings //////////////////////////////////////////////////////////////
+
+#[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct MiscSettings {
+    #[default(false)]
+    pub systemd_service: bool,
 }
 
 // Rule ///////////////////////////////////////////////////////////////////////
@@ -83,6 +95,7 @@ pub struct RawConfig {
     #[serde(rename = "default_settings")]
     pub default_rule_settings: RuleSettings,
     pub rules: Vec<Rule>,
+    pub misc: MiscSettings,
 }
 
 #[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
@@ -149,6 +162,7 @@ impl<'de> Deserialize<'de> for Config {
             .collect::<Vec<Rule>>();
 
         Ok(Config {
+            misc: raw_config.misc,
             rules: updated_rules,
         })
     }

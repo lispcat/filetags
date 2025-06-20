@@ -150,11 +150,12 @@ pub fn symlink_target(path: &Path) -> anyhow::Result<Option<PathBuf>> {
 ///
 pub fn calc_link_from_src_orig(
     src_path: &Path,
-    watch_dir: &Path,
+    _watch_dir: &Path,
     link_dir: &Path,
 ) -> anyhow::Result<PathBuf> {
-    let src_path_without_watch_dir = src_path.strip_prefix(watch_dir)?;
-    let link = link_dir.join(src_path_without_watch_dir);
+    // let src_path_without_watch_dir = src_path.strip_prefix(watch_dir)?;
+    let src_path_basename = src_path.file_name().context("getting basename")?;
+    let link = link_dir.join(src_path_basename);
 
     Ok(link)
 }

@@ -1,8 +1,20 @@
 #+TITLE: Filetags
 
-A novel way to automatically organize your files via symlinks by "tagging" them with filename cookies.
+Meta-organize your files with only a rename, and without touching the original files.
 
-* Purpose
+Most image-gallery apps typically have meta-organization features, such as "albums", which allow for a new level of convenient and clean organization of files, without the duplication of the original.
+
+But in a basic UNIX filesystem environment, that convenience doesn't exist. The closest you can get is to create a "favorites" directory and either copy, move, or symlink your desired file. The first two are very messy, and the latter is very tedious, manual, finicky, prone to failure, and requires the command-line. But if those issues didn't exist, then using symlinks, it could be possible to achieve the same kind of convenience and clean meta-organization of files that you can get in fancy image-gallery applications, but in the UNIX filesystem environment. File-type agnostic, purpose agnostic, location agnostic, and GUI agnostic.
+
+This project tries to achieve just that. By simply "tagging", or renaming a file with a filename cookie (substring), such as prefixing it with an underscore, this program automatically creates a symlink to it in a directory of your choice.
+
+In a config file, you specify the directories to "watch", directories to create symlinks in, and the regexes to match your filename cookies.
+
+And broken or inappropriate symlinks are deleted, so the state of your "favorites" directory will always remain accurate and up-to-date.
+
+* TODO Purpose
+
+TODO: update: change this to how i came up with this idea. make it a bit shorter.
 
 Imagine that you're using a music DAW (Digital Audio Workstation) and want to mark several files as "favorite" so you can quickly come back to them later. Most DAWs don't provide such functionality, so the only realistic options are to either copy or move your favorite samples to a dedicated "favorites" directory. This is not very ideal. It can be very time-consuming and meticulous to move or copy files from one location to another, especially from within your DAW, if it even supports it.
 

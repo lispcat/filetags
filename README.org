@@ -70,11 +70,6 @@ TODO: more info.
 
 ** TODO Implementing design patterns!!
 
-- misc: rewrite the Config builder:
-  : let raw_config: RawConfig = serde_yml::from_str::(&contents);
-  : let config: Config = raw_config.process();
-  implement a "process" method for RawConfig that creates the Config.
-
 - builder pattern
   - crates: bon
   - for building Config?

@@ -14,8 +14,8 @@ use crate::{args::Args, utils};
 
 #[derive(SmartDefault, Debug, Clone, Serialize)]
 pub struct Config {
-    pub rules: Vec<Rule>,
     pub misc: MiscSettings,
+    pub rules: Vec<Rule>,
 }
 
 impl Config {
@@ -29,7 +29,7 @@ impl Config {
     }
 }
 
-// misc settings //////////////////////////////////////////////////////////////
+// MiscSettings ///////////////////////////////////////////////////////////////
 
 #[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
@@ -92,10 +92,10 @@ pub struct RuleSettings {
 #[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RawConfig {
+    pub misc: MiscSettings,
+    pub rules: Vec<Rule>,
     #[serde(rename = "default_settings")]
     pub default_rule_settings: RuleSettings,
-    pub rules: Vec<Rule>,
-    pub misc: MiscSettings,
 }
 
 #[derive(SmartDefault, Debug, Clone, Deserialize, Serialize)]

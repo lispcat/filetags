@@ -1,0 +1,13 @@
+[Unit]
+Description=Run filetags program.
+
+[Service]
+Type=notify
+ExecStart=filetags
+WorkingDirectory=%h
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

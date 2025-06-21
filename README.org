@@ -68,6 +68,26 @@ TODO: more info.
 
 7. wait until responder thread completes
 
+** TODO Implementing design patterns!!
+
+- misc: rewrite the Config builder:
+  : let raw_config: RawConfig = serde_yml::from_str::(&contents);
+  : let config: Config = raw_config.process();
+  implement a "process" method for RawConfig that creates the Config.
+
+- builder pattern
+  - crates: bon
+  - for building Config?
+
+- typestate pattern
+  - different stages of initialization? maybe not necessary with my channels method?
+
+- newtype pattern
+  - 
+
+- factory pattern
+  - a factory for creating threads (watchers, cleaners, etc)
+
 ** TODO File tree
 
 - channels/

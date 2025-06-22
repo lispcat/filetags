@@ -141,10 +141,12 @@ pub fn sort_hashset(set: &HashSet<PathBuf>) -> Vec<&PathBuf> {
 
 pub fn assert_cur_and_exp_trees_eq(root: &Path, paths: Vec<&str>) {
     let tree = collect_tree(root);
-    debug!("Sorted hashset real: {:?}", sort_hashset(&tree));
-
     let expected_tree = create_exp_tree(paths);
-    debug!("Sorted hashset expe: {:?}", sort_hashset(&expected_tree));
+    debug!(
+        "Sorted hashset real: {:#?}\nSorted hashset expe: {:#?}",
+        sort_hashset(&tree),
+        sort_hashset(&expected_tree)
+    );
 
     assert_eq!(tree, expected_tree);
 }

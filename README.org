@@ -78,7 +78,8 @@ TODO: more info.
   - different stages of initialization? maybe not necessary with my channels method?
 
 - newtype pattern
-  - 
+  - a newtype for Paths for link and watch dirs?
+    - implement methods for these newtypes?
 
 - factory pattern
   - a factory for creating threads (watchers, cleaners, etc)

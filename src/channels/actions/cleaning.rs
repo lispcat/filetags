@@ -17,8 +17,7 @@ use crate::{
 
 /// Shorthand for sending a query to the Receiver to `symlink_create_all`.
 pub fn query_symlink_clean_all(tx: &Sender<Message>) -> anyhow::Result<()> {
-    tx.send(Message::SymlinkCreateAll)
-        .context("sending message")
+    tx.send(Message::SymlinkCleanAll).context("sending message")
 }
 
 /// Runs `symlink_clean_dir` for every link_dir in config.

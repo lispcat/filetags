@@ -1,3 +1,3 @@
 pub mod cleaning;
-pub mod filesystem_asserts;
+pub mod filesystem;
 pub mod symlinking;

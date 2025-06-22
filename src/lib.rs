@@ -22,7 +22,7 @@ pub use utils::*;
 
 use crate::actions::{
     cleaning::{periodic_cleaner::start_symlink_cleaners, query_symlink_clean_all},
-    filesystem_asserts::query_create_necessary_dirs,
+    filesystem::query_create_necessary_dirs,
     symlinking::query_symlink_create_all,
 };
 

@@ -57,21 +57,25 @@ impl Dispatcher {
         })
     }
 
-    pub fn run(&self, action: Action) -> anyhow::Result<()> {
+    pub fn run(&self, action: Action) -> anyhow::Result<&Self> {
         self.tx
             .send(Message::Action(action))
-            .context("sending message")
+            .context("sending message")?;
+
+        Ok(self)
     }
 
-    pub fn launch(&self, launch: WorkerType) -> anyhow::Result<()> {
+    pub fn launch(&self, launch: WorkerType) -> anyhow::Result<&Self> {
         match launch {
-            WorkerType::SymlinkCleaners => start_symlink_cleaners(&self.tx, &self.config),
+            WorkerType::Cleaners => start_symlink_cleaners(&self.tx, &self.config)?,
             WorkerType::Watchers => {
-                start_watchers(&self.tx, &self.config).context("starting watchers")
+                start_watchers(&self.tx, &self.config).context("starting watchers")?
             }
             WorkerType::Responder => {
                 anyhow::bail!("cannot launch responder, since it should already be launched")
             }
         }
+
+        Ok(self)
     }
 }

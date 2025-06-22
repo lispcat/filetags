@@ -52,6 +52,8 @@ TODO: more info.
 
 * Notes
 
+- instead of with_barrier, return a collected vector of closures, vec.len() + 1 will be the barrier sum, and then evaluate each closure in a new thread.
+
 ** Main process
 
 1. args, config_gen

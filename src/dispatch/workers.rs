@@ -4,7 +4,7 @@ pub mod watcher;
 
 #[derive(Clone, Debug)]
 pub enum WorkerType {
-    SymlinkCleaners,
+    Cleaners,
     Watchers,
     Responder,
 }

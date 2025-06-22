@@ -52,20 +52,17 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     // start responder
     let dispatcher = Dispatcher::new(rx, tx, &config)?;
 
-    // create all necessary dirs
-    dispatcher.run(Action::MakeNecessaryDirs)?;
-
-    // clean all broken or innapropriate links in link_dirs
-    dispatcher.run(Action::CleanAll)?;
-
-    // maybe create symlinks as appropriate
-    dispatcher.run(Action::SymlinkAll)?;
-
-    // start all link cleaners
-    dispatcher.launch(WorkerType::SymlinkCleaners)?;
-
-    // setup all watchers
-    dispatcher.launch(WorkerType::Watchers)?;
+    dispatcher
+        // create all necessary dirs
+        .run(Action::MakeNecessaryDirs)?
+        // clean all broken or innapropriate links in link_dirs
+        .run(Action::CleanAll)?
+        // maybe create symlinks as appropriate
+        .run(Action::SymlinkAll)?
+        // start all link cleaners
+        .launch(WorkerType::Cleaners)?
+        // setup all watchers
+        .launch(WorkerType::Watchers)?;
 
     // maybe run test hook (for integration tests)
     test_hook.inspect(|hook_fn| {

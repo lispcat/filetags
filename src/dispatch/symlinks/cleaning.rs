@@ -5,18 +5,18 @@ use std::{
 };
 
 use anyhow::Context;
-use crossbeam_channel::Sender;
 use walkdir::WalkDir;
 
 use crate::{
     delete_symlink, link_dir_indices, path_is_under_any_dirs, symlink_target,
-    utils::path_matches_any_regex, Config, Message, Rule,
+    utils::path_matches_any_regex, Config, Rule,
 };
 
-/// Shorthand for sending a query to the Receiver to `symlink_create_all`.
-pub fn query_symlink_clean_all(tx: &Sender<Message>) -> anyhow::Result<()> {
-    tx.send(Message::SymlinkCleanAll).context("sending message")
-}
+// /// Shorthand for sending a query to the Receiver to `symlink_create_all`.
+// pub fn query_symlink_clean_all(tx: &Sender<Message>) -> anyhow::Result<()> {
+//     tx.send(Message::Action(Action::CleanAll))
+//         .context("sending message")
+// }
 
 /// Runs `symlink_clean_dir` for every link_dir in config.
 /// Ran from Receiver.

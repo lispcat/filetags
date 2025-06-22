@@ -87,10 +87,10 @@ pub fn watch_dir_indices_with_refs(
 
 // Config helpers /////////////////////////////////////////////////////////////
 
-pub type ConfigArc = Arc<Config>;
+pub type ArcConfig = Arc<Config>;
 
 /// Calculates the number of watch_dirs within Config.
-pub fn sum_all_watch_dirs(config: &ConfigArc) -> usize {
+pub fn sum_all_watch_dirs(config: &ArcConfig) -> usize {
     config
         .rules
         .iter()
@@ -99,7 +99,7 @@ pub fn sum_all_watch_dirs(config: &ConfigArc) -> usize {
 }
 
 /// Calculates the number of watch_dirs within Config.
-pub fn sum_all_rules(config: &ConfigArc) -> usize {
+pub fn sum_all_rules(config: &ArcConfig) -> usize {
     config.rules.len()
 }
 

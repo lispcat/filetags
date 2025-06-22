@@ -16,7 +16,7 @@ use crate::{
     WatchEvent,
 };
 
-use super::Message;
+use crate::Message;
 
 /// Start the notify watchers.
 pub fn start_watchers(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
@@ -62,7 +62,7 @@ fn start_watcher(
         Ok(event) => match event.kind {
             // only send message if filename modification or file creation
             match_event_kinds!() => {
-                let new_message = Message::Watch(WatchEvent {
+                let new_message = Message::NotifyEvent(WatchEvent {
                     rule_idx,
                     watch_idx,
                     event,

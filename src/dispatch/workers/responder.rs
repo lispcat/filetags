@@ -7,14 +7,15 @@ use anyhow::Context;
 use crossbeam_channel::Receiver;
 
 use crate::{
-    cleaning::{symlink_clean_all, symlink_clean_dir},
     clone_vars,
-    filesystem::create_necessary_dirs,
-    symlinking::{handle_notify_event, symlink_create_all},
-    Config,
+    symlinks::{
+        cleaning::{symlink_clean_all, symlink_clean_dir},
+        filesystem::make_necessary_dirs,
+        symlinking::{handle_notify_event, symlink_create_all},
+        Action,
+    },
+    Config, Message,
 };
-
-use super::Message;
 
 // Message Handling ///////////////////////////////////////////////////////////
 
@@ -45,14 +46,22 @@ pub fn start_responder(
 /// Responds to each Message variant appropriately.
 fn handle_message(message: &Message, config: &Arc<Config>) -> anyhow::Result<Option<Signal>> {
     match message {
-        Message::CreateNecessaryDirs => create_necessary_dirs(config)?,
-        Message::SymlinkCleanAll => symlink_clean_all(config).context("cleaning all")?,
         Message::SymlinkCleanDir(rule_idx, link_idx) => {
             symlink_clean_dir(config, *rule_idx, *link_idx)?
         }
-        Message::SymlinkCreateAll => symlink_create_all(config).context("maybe symlinking all")?,
-        Message::Watch(event) => handle_notify_event(config, event)?,
+        Message::NotifyEvent(event) => handle_notify_event(config, event)?,
         Message::Shutdown => return Ok(Some(Signal::ShutdownSignal)),
+        Message::Action(action) => match action {
+            Action::CleanAll => {
+                symlink_clean_all(config).context("cleaning all")?;
+            }
+            Action::MakeNecessaryDirs => {
+                make_necessary_dirs(config)?;
+            }
+            Action::SymlinkAll => {
+                symlink_create_all(config).context("maybe symlinking all")?;
+            }
+        },
     }
     Ok(None)
 }

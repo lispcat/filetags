@@ -6,7 +6,6 @@ use std::{
 };
 
 use anyhow::Context;
-use crossbeam_channel::Sender;
 use notify::{
     event::{ModifyKind, RenameMode},
     EventKind,
@@ -17,14 +16,14 @@ use walkdir::WalkDir;
 use crate::{
     delete_symlink, get_basename, match_event_kinds, symlink_target,
     utils::{calc_link_from_src_orig, path_matches_any_regex},
-    watch_dir_indices_with_refs, Config, Message, WatchEvent,
+    watch_dir_indices_with_refs, Config, WatchEvent,
 };
 
-/// Shorthand for sending a query to the Receiver to symlink_create_all.
-pub fn query_symlink_create_all(tx: &Sender<Message>) -> anyhow::Result<()> {
-    tx.send(Message::SymlinkCreateAll)
-        .context("sending message")
-}
+// /// Shorthand for sending a query to the Receiver to symlink_create_all.
+// pub fn query_symlink_create_all(tx: &Sender<Message>) -> anyhow::Result<()> {
+//     tx.send(Message::Action(Action::SymlinkAll))
+//         .context("sending message")
+// }
 
 /// Runs `symlink_create` for every watch_dir in Config.
 pub fn symlink_create_all(config: &Arc<Config>) -> anyhow::Result<()> {

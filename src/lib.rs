@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Context;
 use clap::Parser;
 use crossbeam_channel::{Receiver, Sender};
 use systemd::daemon;
@@ -8,24 +7,18 @@ use tracing::debug;
 
 mod args;
 mod config;
+mod dispatch;
 mod logger;
-mod symlinks;
 mod utils;
-mod workers;
 
 // re-export
 pub use args::*;
 pub use config::*;
+pub use dispatch::*;
 pub use logger::*;
-pub use symlinks::*;
 pub use utils::*;
-pub use workers::*;
 
-use crate::{
-    cleaning::query_symlink_clean_all, filesystem::query_create_necessary_dirs,
-    periodic_cleaner::start_symlink_cleaners, symlinking::query_symlink_create_all,
-    watcher::start_watchers,
-};
+use crate::{symlinks::Action, workers::WorkerType};
 
 // TODO:
 // - prevent recursive searching when LinkDir is within WatchDir or symlinking dirs.
@@ -57,22 +50,22 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     debug!("Config: {:#?}", config);
 
     // start responder
-    let dispatcher = Dispatcher::new(rx, &config)?;
+    let dispatcher = Dispatcher::new(rx, tx, &config)?;
 
     // create all necessary dirs
-    query_create_necessary_dirs(&tx)?;
+    dispatcher.run(Action::MakeNecessaryDirs)?;
 
     // clean all broken or innapropriate links in link_dirs
-    query_symlink_clean_all(&tx)?;
+    dispatcher.run(Action::CleanAll)?;
 
     // maybe create symlinks as appropriate
-    query_symlink_create_all(&tx)?;
+    dispatcher.run(Action::SymlinkAll)?;
 
     // start all link cleaners
-    start_symlink_cleaners(&tx, &config).context("starting cleaners")?;
+    dispatcher.launch(WorkerType::SymlinkCleaners)?;
 
     // setup all watchers
-    start_watchers(&tx, &config).context("starting watchers")?;
+    dispatcher.launch(WorkerType::Watchers)?;
 
     // maybe run test hook (for integration tests)
     test_hook.inspect(|hook_fn| {

@@ -1,5 +1,3 @@
-pub mod periodic_cleaner;
-
 use std::{
     fs::{self},
     path::Path,

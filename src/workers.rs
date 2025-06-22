@@ -1,6 +1,6 @@
 use notify::Event;
 
-pub mod actions;
+pub mod periodic_cleaner;
 pub mod responder;
 pub mod watcher;
 

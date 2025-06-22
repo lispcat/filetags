@@ -6,16 +6,15 @@ use std::{
 use anyhow::Context;
 use crossbeam_channel::Receiver;
 
-use crate::{clone_vars, Config};
-
-use super::{
-    actions::{
-        cleaning::{symlink_clean_all, symlink_clean_dir},
-        filesystem::create_necessary_dirs,
-        symlinking::{handle_notify_event, symlink_create_all},
-    },
-    Message,
+use crate::{
+    cleaning::{symlink_clean_all, symlink_clean_dir},
+    clone_vars,
+    filesystem::create_necessary_dirs,
+    symlinking::{handle_notify_event, symlink_create_all},
+    Config,
 };
+
+use super::Message;
 
 // Message Handling ///////////////////////////////////////////////////////////
 

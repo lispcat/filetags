@@ -1,29 +1,30 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use channels::{responder::start_responder, watcher::start_watchers};
 use clap::Parser;
 use crossbeam_channel::{Receiver, Sender};
 use systemd::daemon;
 use tracing::debug;
 
 mod args;
-mod channels;
 mod config;
 mod logger;
+mod symlinks;
 mod utils;
+mod workers;
 
 // re-export
 pub use args::*;
-pub use channels::*;
 pub use config::*;
 pub use logger::*;
+pub use symlinks::*;
 pub use utils::*;
+pub use workers::*;
 
-use crate::actions::{
-    cleaning::{periodic_cleaner::start_symlink_cleaners, query_symlink_clean_all},
-    filesystem::query_create_necessary_dirs,
-    symlinking::query_symlink_create_all,
+use crate::{
+    cleaning::query_symlink_clean_all, filesystem::query_create_necessary_dirs,
+    periodic_cleaner::start_symlink_cleaners, responder::start_responder,
+    symlinking::query_symlink_create_all, watcher::start_watchers,
 };
 
 // TODO:

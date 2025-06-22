@@ -23,8 +23,8 @@ pub use workers::*;
 
 use crate::{
     cleaning::query_symlink_clean_all, filesystem::query_create_necessary_dirs,
-    periodic_cleaner::start_symlink_cleaners, responder::start_responder,
-    symlinking::query_symlink_create_all, watcher::start_watchers,
+    periodic_cleaner::start_symlink_cleaners, symlinking::query_symlink_create_all,
+    watcher::start_watchers,
 };
 
 // TODO:
@@ -57,7 +57,7 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     debug!("Config: {:#?}", config);
 
     // start responder
-    let responder_handle = start_responder(rx, &config).context("starting responder")?;
+    let dispatcher = Dispatcher::new(rx, &config)?;
 
     // create all necessary dirs
     query_create_necessary_dirs(&tx)?;
@@ -86,7 +86,8 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     }
 
     // block this thread until the responder thread completes
-    responder_handle
+    dispatcher
+        .handle
         .join()
         .expect("failed to join respender thread")?;
 

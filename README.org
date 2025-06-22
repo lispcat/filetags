@@ -87,17 +87,22 @@ TODO: more info.
 - a WorkerBuilder that creates either a responder/queue, watcher, or cleaner.
   - re-organize the file structure so that src/channels/worker/{watcher, periodic_cleaner}.
 
+  - struct Channels {
+      responder_handle: (),
+    }
+
 ** TODO File tree
 
 - lib.rs
-- symlinks/
-  - filesystem.rs
-  - symlinking.rs
-  - cleaning.rs
-- workers/
-  - responder.rs
-  - watcher.rs
-  - periodic_cleaner.rs
+- dispatcher/
+  - symlinks/
+    - filesystem.rs
+    - symlinking.rs
+    - cleaning.rs
+  - workers/
+    - responder.rs
+    - watcher.rs
+    - periodic_cleaner.rs
 
 ** Assurances
 

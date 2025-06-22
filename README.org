@@ -83,21 +83,20 @@ TODO: more info.
 - factory pattern
   - a factory for creating threads (watchers, cleaners, etc)
 
+- a WorkerBuilder that creates either a responder/queue, watcher, or cleaner.
+  - re-organize the file structure so that src/channels/worker/{watcher, periodic_cleaner}.
+
 ** TODO File tree
 
-- channels/
-  - actions/
-    - symlinking.rs
-    - cleaning.rs
-  - responder.rs
-  - senders.rs
-- args.rs
-- channels.rs
-- config.rs
 - lib.rs
-- logger.rs
-- main.rs
-- utils.rs
+- symlinks/
+  - filesystem.rs
+  - symlinking.rs
+  - cleaning.rs
+- workers/
+  - responder.rs
+  - watcher.rs
+  - periodic_cleaner.rs
 
 ** Assurances
 

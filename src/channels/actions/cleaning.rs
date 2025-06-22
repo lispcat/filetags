@@ -49,7 +49,7 @@ pub fn symlink_clean_dir(
             .with_context(|| format!("performing metadata call on path: {:?}", path))?;
 
         // if is symlink, check if valid. if not, delete
-        if metadata.file_type().is_symlink() && invalid_symlink(path, rule)? {
+        if metadata.file_type().is_symlink() && inappropriate_symlink(path, rule)? {
             delete_symlink(path, &metadata)?;
         }
     }
@@ -66,7 +66,7 @@ pub fn symlink_clean_dir(
 ///
 /// Note that this function does not check whether the file at the path is a symlink or not.
 /// So do that validation beforehand.
-fn invalid_symlink(path: &Path, rule: &Rule) -> anyhow::Result<bool> {
+fn inappropriate_symlink(path: &Path, rule: &Rule) -> anyhow::Result<bool> {
     // pattern doesnt match any regex
     if !path_matches_any_regex(path, &rule.regex).context("matching regexes")? {
         return Ok(true);

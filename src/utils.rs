@@ -30,7 +30,11 @@ macro_rules! clone_vars {
         let $new_var = $var.clone();
     };
 
-    (@handle ($type:ident :: $var:ident => $new_var:ident)) => {
+    (@handle ($var:ident : $type:ident)) => {
+        let $var = $type::clone($var);
+    };
+
+    (@handle ($var:ident : $type:ident => $new_var:ident)) => {
         let $new_var = $type::clone($var);
     };
 }

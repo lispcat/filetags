@@ -49,7 +49,7 @@ impl Dispatcher {
         tx: Sender<Message>,
         config: &Arc<Config>,
     ) -> anyhow::Result<Self> {
-        clone_vars!((Arc :: config => config));
+        clone_vars!((config: Arc));
         Ok(Self {
             handle: start_responder(rx, &config)?,
             tx,

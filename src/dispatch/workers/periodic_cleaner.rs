@@ -25,10 +25,10 @@ fn start_symlink_cleaner_for_each_rule(
 ) -> anyhow::Result<()> {
     for (rule_idx, rule) in config.rules.iter().enumerate() {
         if let Some(clean_interval) = rule.settings.clean_interval {
-            clone_vars!(tx, barrier, (Arc :: config => arc_config));
+            clone_vars!(tx, barrier, (config: Arc));
             thread::spawn(move || -> anyhow::Result<()> {
                 barrier.wait();
-                symlink_cleaner_worker(arc_config, rule_idx, tx, clean_interval)
+                symlink_cleaner_worker(config, rule_idx, tx, clean_interval)
             });
         }
     }

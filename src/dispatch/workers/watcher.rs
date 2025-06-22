@@ -35,9 +35,9 @@ pub fn start_watchers_for_each_watch_dir(
 ) -> anyhow::Result<()> {
     // start watcher for each watch_dir
     for (rule_idx, watch_idx) in watch_dir_indices(config) {
-        clone_vars!(tx, barrier, (Arc :: config => arc_config));
+        clone_vars!(tx, barrier, (config: Arc));
         thread::spawn(move || -> anyhow::Result<()> {
-            start_watcher(arc_config, rule_idx, watch_idx, tx, barrier)
+            start_watcher(config, rule_idx, watch_idx, tx, barrier)
         });
     }
     Ok(())

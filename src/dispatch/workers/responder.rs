@@ -24,15 +24,13 @@ pub fn start_responder(
     rx: Receiver<Message>,
     config: &Arc<Config>,
 ) -> anyhow::Result<JoinHandle<anyhow::Result<()>>> {
-    clone_vars!((Arc :: config => arc_config));
+    clone_vars!((config: Arc));
     let responder_handle = thread::spawn(move || -> anyhow::Result<()> {
         loop {
             let message = rx.recv().context("Responder waiting for Message")?;
 
             // handle the received message. may sometimes return a Signal enum.
-            if let Some(signal) =
-                handle_message(&message, &arc_config).context("handling message")?
-            {
+            if let Some(signal) = handle_message(&message, &config).context("handling message")? {
                 match signal {
                     Signal::ShutdownSignal => break Ok(()),
                 }

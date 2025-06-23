@@ -3,7 +3,7 @@ use std::{sync::Arc, thread, time::Duration};
 use anyhow::Context;
 use crossbeam_channel::Sender;
 
-use crate::{clone_vars, Config, Message};
+use crate::{clone_vars, symlinks::Action, Config, Message};
 
 /// Start symlink cleaners.
 pub fn start_periodic_cleaners(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
@@ -46,25 +46,8 @@ fn periodic_cleaner_process(
     loop {
         thread::sleep(Duration::from_secs(clean_interval.into()));
         for link_idx in 0..rule.link_dirs.len() {
-            tx.send(Message::SymlinkCleanDir(rule_idx, link_idx))
+            tx.send(Message::Action(Action::CleanDir(rule_idx, link_idx)))
                 .context("sending message CleanDir")?;
         }
     }
 }
-
-// fn start_symlink_cleaner_for_each_rule(
-//     tx: &Sender<Message>,
-//     config: &Arc<Config>,
-//     barrier: &Arc<Barrier>,
-// ) -> anyhow::Result<()> {
-//     for (rule_idx, rule) in config.rules.iter().enumerate() {
-//         if let Some(clean_interval) = rule.settings.clean_interval {
-//             clone_vars!(tx, barrier, (config: Arc));
-//             thread::spawn(move || -> anyhow::Result<()> {
-//                 barrier.wait();
-//                 symlink_cleaner_worker(config, rule_idx, tx, clean_interval)
-//             });
-//         }
-//     }
-//     Ok(())
-// }

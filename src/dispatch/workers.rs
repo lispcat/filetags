@@ -5,5 +5,4 @@ pub mod watcher;
 pub enum WorkerType {
     Cleaners,
     Watchers,
-    Responder,
 }

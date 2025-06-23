@@ -7,7 +7,7 @@ use anyhow::Context;
 use crossbeam_channel::{Receiver, Sender};
 use notify::Event;
 use symlinks::{
-    cleaning::{symlink_clean_all, symlink_clean_dir},
+    cleaning::{clean_all, clean_dir},
     filesystem::make_necessary_dirs,
     symlinking::{handle_notify_event, symlink_create_all},
     Action,
@@ -24,7 +24,6 @@ pub mod workers;
 /// Message to be sent throgh the crossbeam_channel.
 #[derive(Clone, Debug)]
 pub enum Message {
-    SymlinkCleanDir(usize, usize),
     NotifyEvent(NotifyEvent),
     Shutdown,
     Action(Action),
@@ -51,19 +50,22 @@ pub struct Dispatcher {
 }
 
 impl Dispatcher {
+    /// Creates a new Dispatcher from a crossbeam channel.
     pub fn new(
         rx: Receiver<Message>,
         tx: Sender<Message>,
         config: Arc<Config>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
-            rx_handle: Self::start_responder(rx, Arc::clone(&config))?,
+            rx_handle: Self::start_rx(rx, Arc::clone(&config))?,
             tx,
             config,
         })
     }
 
-    fn start_responder(
+    /// Starts the responder queue.
+    /// For each Message it receives through rx, it handles it through `handle_message`.
+    fn start_rx(
         rx: Receiver<Message>,
         config: Arc<Config>,
     ) -> anyhow::Result<JoinHandle<anyhow::Result<()>>> {
@@ -81,17 +83,28 @@ impl Dispatcher {
         }))
     }
 
-    /// Responds to each Message variant appropriately.
+    /// A buildable method for invoking an `Action` using the dispatcher.
+    pub fn run(&self, action: Action) -> anyhow::Result<&Self> {
+        self.tx
+            .send(Message::Action(action))
+            .context("sending message")?;
+
+        Ok(self)
+    }
+
+    /// Responds to each Message variant received. Invoked from `start_rx`.
     fn handle_message(message: &Message, config: &Arc<Config>) -> anyhow::Result<Option<Signal>> {
         match message {
-            Message::SymlinkCleanDir(rule_idx, link_idx) => {
-                symlink_clean_dir(config, *rule_idx, *link_idx)?
-            }
-            Message::NotifyEvent(event) => handle_notify_event(config, event)?,
             Message::Shutdown => return Ok(Some(Signal::ShutdownSignal)),
+            Message::NotifyEvent(event) => {
+                handle_notify_event(config, event).context("handling notify event")?
+            }
             Message::Action(action) => match action {
                 Action::CleanAll => {
-                    symlink_clean_all(config).context("cleaning all")?;
+                    clean_all(config).context("cleaning all")?;
+                }
+                Action::CleanDir(rule_idx, link_idx) => {
+                    clean_dir(config, *rule_idx, *link_idx).context("cleaning dir")?
                 }
                 Action::MakeNecessaryDirs => {
                     make_necessary_dirs(config)?;
@@ -104,22 +117,13 @@ impl Dispatcher {
         Ok(None)
     }
 
-    pub fn run(&self, action: Action) -> anyhow::Result<&Self> {
-        self.tx
-            .send(Message::Action(action))
-            .context("sending message")?;
-
-        Ok(self)
-    }
-
+    /// A buildable method for launching a `WorkerType`.
     pub fn launch(&self, launch: WorkerType) -> anyhow::Result<&Self> {
         match launch {
-            WorkerType::Cleaners => start_periodic_cleaners(&self.tx, &self.config)?,
+            WorkerType::Cleaners => start_periodic_cleaners(&self.tx, &self.config)
+                .context("starting periodic cleaners")?,
             WorkerType::Watchers => {
                 start_watchers(&self.tx, &self.config).context("starting watchers")?
-            }
-            WorkerType::Responder => {
-                anyhow::bail!("cannot launch responder, since it should already be launched")
             }
         }
 

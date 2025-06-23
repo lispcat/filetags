@@ -20,20 +20,16 @@ use crate::{
 
 /// Runs `symlink_clean_dir` for every link_dir in config.
 /// Ran from Receiver.
-pub fn symlink_clean_all(config: &Arc<Config>) -> anyhow::Result<()> {
+pub fn clean_all(config: &Arc<Config>) -> anyhow::Result<()> {
     for (rule_idx, link_idx) in link_dir_indices(config) {
-        symlink_clean_dir(config, rule_idx, link_idx)?;
+        clean_dir(config, rule_idx, link_idx)?;
     }
 
     Ok(())
 }
 
 /// Recursively cleans symlinks at the specified link_dir.
-pub fn symlink_clean_dir(
-    config: &Arc<Config>,
-    rule_idx: usize,
-    link_idx: usize,
-) -> anyhow::Result<()> {
+pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyhow::Result<()> {
     let rule = &config.rules[rule_idx];
     let link_dir = &rule.link_dirs[link_idx];
 

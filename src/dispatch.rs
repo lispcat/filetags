@@ -47,6 +47,7 @@ pub struct Dispatcher {
     pub rx_handle: JoinHandle<anyhow::Result<()>>,
     pub tx: Sender<Message>,
     pub config: Arc<Config>,
+    pub worker_handles: Vec<JoinHandle<anyhow::Result<()>>>,
 }
 
 impl Dispatcher {
@@ -57,9 +58,10 @@ impl Dispatcher {
         config: Arc<Config>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
-            rx_handle: Self::start_rx(rx, Arc::clone(&config))?,
+            rx_handle: Self::start_rx(rx, Arc::clone(&config)).context("starting rx")?,
             tx,
             config,
+            worker_handles: vec![],
         })
     }
 
@@ -84,11 +86,10 @@ impl Dispatcher {
     }
 
     /// A buildable method for invoking an `Action` using the dispatcher.
-    pub fn run(&self, action: Action) -> anyhow::Result<&Self> {
+    pub fn run(self, action: Action) -> anyhow::Result<Self> {
         self.tx
             .send(Message::Action(action))
             .context("sending message")?;
-
         Ok(self)
     }
 
@@ -107,7 +108,7 @@ impl Dispatcher {
                     clean_dir(config, *rule_idx, *link_idx).context("cleaning dir")?
                 }
                 Action::MakeNecessaryDirs => {
-                    make_necessary_dirs(config)?;
+                    make_necessary_dirs(config).context("making necessary dirs")?;
                 }
                 Action::SymlinkAll => {
                     symlink_create_all(config).context("maybe symlinking all")?;
@@ -118,14 +119,17 @@ impl Dispatcher {
     }
 
     /// A buildable method for launching a `WorkerType`.
-    pub fn launch(&self, launch: WorkerType) -> anyhow::Result<&Self> {
-        match launch {
+    /// Every worker thread that it launches will be appended to `self.worker_handles`.
+    pub fn launch(mut self, launch: WorkerType) -> anyhow::Result<Self> {
+        let mut new_handles = match launch {
             WorkerType::Cleaners => start_periodic_cleaners(&self.tx, &self.config)
                 .context("starting periodic cleaners")?,
             WorkerType::Watchers => {
                 start_watchers(&self.tx, &self.config).context("starting watchers")?
             }
-        }
+        };
+        // append the new worker handles to `self.worker_handles`
+        self.worker_handles.append(&mut new_handles);
 
         Ok(self)
     }

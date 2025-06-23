@@ -1,4 +1,9 @@
-use std::{path::PathBuf, sync::Arc, thread, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::Arc,
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
 use crossbeam_channel::{self, Sender};
 use notify::{
@@ -12,15 +17,17 @@ use crate::{match_event_kinds, watch_dir_indices, Config, NotifyEvent};
 use crate::Message;
 
 /// Start the notify watchers.
-pub fn start_watchers(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
+pub fn start_watchers(
+    tx: &Sender<Message>,
+    config: &Arc<Config>,
+) -> anyhow::Result<Vec<JoinHandle<anyhow::Result<()>>>> {
     let watchers: Vec<(INotifyWatcher, PathBuf)> = watch_dir_indices(config)
         .map(|(rule_idx, watch_idx)| -> anyhow::Result<_> {
             let path = config.rules[rule_idx].watch_dirs[watch_idx].clone();
             Ok((create_watcher(tx.clone(), rule_idx, watch_idx)?, path))
         })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let _handles: Vec<_> = watchers
+        .collect::<Result<Vec<(_, _)>, _>>()?;
+    Ok(watchers
         .into_iter()
         .map(|(mut watcher, path)| {
             thread::spawn(move || -> anyhow::Result<()> {
@@ -32,9 +39,7 @@ pub fn start_watchers(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Res
                 }
             })
         })
-        .collect();
-
-    Ok(())
+        .collect::<Vec<_>>())
 }
 
 fn create_watcher(
@@ -43,22 +48,19 @@ fn create_watcher(
     watch_idx: usize,
 ) -> anyhow::Result<INotifyWatcher> {
     let watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
-        Ok(event) => match event.kind {
-            // only send message if filename modification or file creation
-            match_event_kinds!() => {
-                let new_message = Message::NotifyEvent(NotifyEvent {
+        Ok(event) => {
+            if let match_event_kinds!() = event.kind {
+                let mesg = Message::NotifyEvent(NotifyEvent {
                     rule_idx,
                     watch_idx,
                     event,
                 });
-                match tx.send(new_message) {
+                match tx.send(mesg) {
                     Ok(_) => debug!("Watcher sent message!"),
                     Err(e) => debug!("WATCHER FAILED TO SEND MESSAGE: {:?}", e),
                 }
             }
-            // for all other events do nothing
-            _ => (),
-        },
+        }
         Err(e) => {
             debug!("WATCH ERROR! {}", e);
         }

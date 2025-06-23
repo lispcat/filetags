@@ -1,4 +1,8 @@
-use std::{sync::Arc, thread, time::Duration};
+use std::{
+    sync::Arc,
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 
 use anyhow::Context;
 use crossbeam_channel::Sender;
@@ -6,13 +10,14 @@ use crossbeam_channel::Sender;
 use crate::{clone_vars, symlinks::Action, Config, Message};
 
 /// Start symlink cleaners.
-pub fn start_periodic_cleaners(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
-    let _cleaner_handles = collect_cleaner_closures(tx, config)?
+pub fn start_periodic_cleaners(
+    tx: &Sender<Message>,
+    config: &Arc<Config>,
+) -> anyhow::Result<Vec<JoinHandle<anyhow::Result<()>>>> {
+    Ok(collect_cleaner_closures(tx, config)?
         .into_iter()
         .map(thread::spawn)
-        .collect::<Vec<_>>();
-
-    Ok(())
+        .collect::<Vec<_>>())
 }
 
 fn collect_cleaner_closures(

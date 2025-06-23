@@ -50,9 +50,7 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     debug!("Config: {:#?}", config);
 
     // start responder
-    let dispatcher = Dispatcher::new(rx, tx, Arc::clone(&config))?;
-
-    dispatcher
+    let dispatcher = Dispatcher::new(rx, tx, Arc::clone(&config))?
         // create all necessary dirs
         .run(Action::MakeNecessaryDirs)?
         // clean all broken or innapropriate links in link_dirs

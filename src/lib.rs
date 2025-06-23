@@ -18,7 +18,7 @@ pub use dispatch::*;
 pub use logger::*;
 pub use utils::*;
 
-use crate::{symlinks::Action, workers::WorkerType};
+use crate::{actions::Action, workers::WorkerType};
 
 // TODO:
 // - prevent recursive searching when LinkDir is within WatchDir or symlinking dirs.

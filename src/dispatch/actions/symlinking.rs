@@ -16,7 +16,9 @@ use walkdir::WalkDir;
 use crate::{
     delete_symlink, get_basename, match_event_kinds, symlink_target,
     utils::{calc_link_from_src_orig, path_matches_any_regex},
-    watch_dir_indices_with_refs, Config, NotifyEvent,
+    watch_dir_indices_with_refs,
+    workers::watcher::NotifyEvent,
+    Config,
 };
 
 // /// Shorthand for sending a query to the Receiver to symlink_create_all.

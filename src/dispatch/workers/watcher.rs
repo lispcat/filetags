@@ -5,6 +5,7 @@ use std::{
     time::Duration,
 };
 
+use anyhow::Context;
 use crossbeam_channel::{self, Sender};
 use notify::{
     event::{ModifyKind, RenameMode},
@@ -12,42 +13,26 @@ use notify::{
 };
 use tracing::debug;
 
-use crate::{match_event_kinds, watch_dir_indices, Config, NotifyEvent};
+use crate::{match_event_kinds, watch_dir_indices, Config};
 
 use crate::Message;
 
-/// Start the notify watchers.
-pub fn start_watchers(
-    tx: &Sender<Message>,
-    config: &Arc<Config>,
-) -> anyhow::Result<Vec<JoinHandle<anyhow::Result<()>>>> {
-    let watchers: Vec<(INotifyWatcher, PathBuf)> = watch_dir_indices(config)
-        .map(|(rule_idx, watch_idx)| -> anyhow::Result<_> {
-            let path = config.rules[rule_idx].watch_dirs[watch_idx].clone();
-            Ok((create_watcher(tx.clone(), rule_idx, watch_idx)?, path))
-        })
-        .collect::<Result<Vec<(_, _)>, _>>()?;
-    Ok(watchers
-        .into_iter()
-        .map(|(mut watcher, path)| {
-            thread::spawn(move || -> anyhow::Result<()> {
-                // start the watcher
-                watcher.watch(path.as_path(), RecursiveMode::Recursive)?;
-                // keep it alive
-                loop {
-                    thread::sleep(Duration::from_secs(1));
-                }
-            })
-        })
-        .collect::<Vec<_>>())
+/// Used in `Message::NotifyEvent(NotifyEvent)`.
+/// Provides needed additional info for the responder and its invoked symlinker actions.
+#[derive(Clone, Debug)]
+pub struct NotifyEvent {
+    pub rule_idx: usize,
+    pub watch_idx: usize,
+    pub event: Event,
 }
 
+/// Create and return an INotifyWatcher. Don't start them just yet.
 fn create_watcher(
     tx: Sender<Message>,
     rule_idx: usize,
     watch_idx: usize,
 ) -> anyhow::Result<INotifyWatcher> {
-    let watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
+    notify::recommended_watcher(move |res: Result<Event, _>| match res {
         Ok(event) => {
             if let match_event_kinds!() = event.kind {
                 let mesg = Message::NotifyEvent(NotifyEvent {
@@ -64,6 +49,32 @@ fn create_watcher(
         Err(e) => {
             debug!("WATCH ERROR! {}", e);
         }
-    })?;
-    Ok(watcher)
+    })
+    .context("creating notify watcher")
+}
+
+/// Collect and start the INotifyWatchers.
+pub fn start_watchers(
+    tx: &Sender<Message>,
+    config: &Arc<Config>,
+) -> anyhow::Result<Vec<JoinHandle<anyhow::Result<()>>>> {
+    let watchers: Vec<(INotifyWatcher, PathBuf)> = watch_dir_indices(config)
+        .map(|(rule_idx, watch_idx)| -> anyhow::Result<_> {
+            let path = config.rules[rule_idx].watch_dirs[watch_idx].clone();
+            Ok((create_watcher(tx.clone(), rule_idx, watch_idx)?, path))
+        })
+        .collect::<Result<Vec<(_, _)>, _>>()?;
+    Ok(watchers
+        .into_iter()
+        .map(|(mut watcher, path)| {
+            thread::spawn(move || -> anyhow::Result<()> {
+                // start the watcher at the path
+                watcher.watch(path.as_path(), RecursiveMode::Recursive)?;
+                // keep it alive
+                loop {
+                    thread::sleep(Duration::from_secs(1));
+                }
+            })
+        })
+        .collect::<Vec<_>>())
 }

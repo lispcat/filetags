@@ -7,7 +7,7 @@ use std::{
 use anyhow::Context;
 use crossbeam_channel::Sender;
 
-use crate::{clone_vars, symlinks::Action, Config, Message};
+use crate::{actions::Action, clone_vars, Config, Message};
 
 /// Start symlink cleaners.
 pub fn start_periodic_cleaners(

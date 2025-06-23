@@ -3,39 +3,33 @@ use std::{
     thread::{self, JoinHandle},
 };
 
-use anyhow::Context;
-use crossbeam_channel::{Receiver, Sender};
-use notify::Event;
-use symlinks::{
+use actions::{
     cleaning::{clean_all, clean_dir},
     filesystem::make_necessary_dirs,
     symlinking::{handle_notify_event, symlink_create_all},
     Action,
 };
-use workers::{periodic_cleaner::start_periodic_cleaners, watcher::start_watchers, WorkerType};
+use anyhow::Context;
+use crossbeam_channel::{Receiver, Sender};
+use workers::{
+    periodic_cleaner::start_periodic_cleaners,
+    watcher::{start_watchers, NotifyEvent},
+    WorkerType,
+};
 
 use crate::Config;
 
-pub mod symlinks;
+pub mod actions;
 pub mod workers;
 
 // Message ////////////////////////////////////////////////////////////////////
 
-/// Message to be sent throgh the crossbeam_channel.
+/// Message to be sent throgh the crossbeam channel.
 #[derive(Clone, Debug)]
 pub enum Message {
     NotifyEvent(NotifyEvent),
-    Shutdown,
     Action(Action),
-}
-
-/// Used in `Message::NotifyEvent(NotifyEvent)`.
-/// Provides needed additional info for the responder and its invoked symlinker actions.
-#[derive(Clone, Debug)]
-pub struct NotifyEvent {
-    pub rule_idx: usize,
-    pub watch_idx: usize,
-    pub event: Event,
+    Shutdown,
 }
 
 // Dispatcher /////////////////////////////////////////////////////////////////
@@ -115,11 +109,13 @@ impl Dispatcher {
                 }
             },
         }
+        // only return Some if returning a Signal, such as a ShutdownSignal.
         Ok(None)
     }
 
     /// A buildable method for launching a `WorkerType`.
-    /// Every worker thread that it launches will be appended to `self.worker_handles`.
+    /// For every worker thread that it launches, its handles will be appended to
+    /// `self.worker_handles`.
     pub fn launch(mut self, launch: WorkerType) -> anyhow::Result<Self> {
         let mut new_handles = match launch {
             WorkerType::Cleaners => start_periodic_cleaners(&self.tx, &self.config)
@@ -130,7 +126,6 @@ impl Dispatcher {
         };
         // append the new worker handles to `self.worker_handles`
         self.worker_handles.append(&mut new_handles);
-
         Ok(self)
     }
 }

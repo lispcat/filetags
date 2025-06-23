@@ -34,7 +34,7 @@ macro_rules! clone_vars {
         let $var = $type::clone($var);
     };
 
-    (@handle ($var:ident : $type:ident => $new_var:ident)) => {
+    (@handle ($var:ident => $new_var:ident : $type:ident)) => {
         let $new_var = $type::clone($var);
     };
 }

@@ -1,68 +1,52 @@
-use std::{
-    sync::{Arc, Barrier},
-    thread,
-    time::Duration,
-};
+use std::{path::PathBuf, sync::Arc, thread, time::Duration};
 
 use crossbeam_channel::{self, Sender};
 use notify::{
     event::{ModifyKind, RenameMode},
-    Event, EventKind, RecursiveMode, Watcher,
+    Event, EventKind, INotifyWatcher, RecursiveMode, Watcher,
 };
 use tracing::debug;
 
-use crate::{
-    clone_vars, match_event_kinds, sum_all_watch_dirs, watch_dir_indices, with_barrier, Config,
-    WatchEvent,
-};
+use crate::{match_event_kinds, watch_dir_indices, Config, NotifyEvent};
 
 use crate::Message;
 
 /// Start the notify watchers.
 pub fn start_watchers(tx: &Sender<Message>, config: &Arc<Config>) -> anyhow::Result<()> {
-    with_barrier!(sum_all_watch_dirs(config), |barrier| {
-        start_watchers_for_each_watch_dir(config, tx, barrier)
-    });
+    let watchers: Vec<(INotifyWatcher, PathBuf)> = watch_dir_indices(config)
+        .map(|(rule_idx, watch_idx)| -> anyhow::Result<_> {
+            let path = config.rules[rule_idx].watch_dirs[watch_idx].clone();
+            Ok((create_watcher(tx.clone(), rule_idx, watch_idx)?, path))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let _handles: Vec<_> = watchers
+        .into_iter()
+        .map(|(mut watcher, path)| {
+            thread::spawn(move || -> anyhow::Result<()> {
+                // start the watcher
+                watcher.watch(path.as_path(), RecursiveMode::Recursive)?;
+                // keep it alive
+                loop {
+                    thread::sleep(Duration::from_secs(1));
+                }
+            })
+        })
+        .collect();
 
     Ok(())
 }
 
-/// Spawn a notify watcher for each watch_dir.
-pub fn start_watchers_for_each_watch_dir(
-    config: &Arc<Config>,
-    tx: &Sender<Message>,
-    barrier: &Arc<Barrier>,
-) -> anyhow::Result<()> {
-    // start watcher for each watch_dir
-    for (rule_idx, watch_idx) in watch_dir_indices(config) {
-        clone_vars!(tx, barrier, (config: Arc));
-        thread::spawn(move || -> anyhow::Result<()> {
-            start_watcher(config, rule_idx, watch_idx, tx, barrier)
-        });
-    }
-    Ok(())
-}
-
-/// Starts a notify watcher.
-/// For every Event that the notify watcher produces, it's forwarded to the Reciver.
-///
-/// This function is meant to be ran as a new thread.
-fn start_watcher(
-    config: Arc<Config>,
+fn create_watcher(
+    tx: Sender<Message>,
     rule_idx: usize,
     watch_idx: usize,
-    tx: Sender<Message>,
-    barrier: Arc<Barrier>,
-) -> anyhow::Result<()> {
-    let rule = &config.rules[rule_idx];
-    let watch = &rule.watch_dirs[watch_idx];
-
-    // create notify watcher
-    let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
+) -> anyhow::Result<INotifyWatcher> {
+    let watcher = notify::recommended_watcher(move |res: Result<Event, _>| match res {
         Ok(event) => match event.kind {
             // only send message if filename modification or file creation
             match_event_kinds!() => {
-                let new_message = Message::NotifyEvent(WatchEvent {
+                let new_message = Message::NotifyEvent(NotifyEvent {
                     rule_idx,
                     watch_idx,
                     event,
@@ -76,18 +60,8 @@ fn start_watcher(
             _ => (),
         },
         Err(e) => {
-            debug!("Watch Error! {}", e);
+            debug!("WATCH ERROR! {}", e);
         }
     })?;
-
-    debug!("Starting watcher at: {:?}", watch);
-    watcher.watch(watch, RecursiveMode::Recursive)?;
-
-    // wait until all watchers set up
-    barrier.wait();
-
-    // Keep the watcher alive
-    loop {
-        thread::sleep(Duration::from_secs(1));
-    }
+    Ok(watcher)
 }

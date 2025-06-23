@@ -52,11 +52,12 @@ fn basic1() {
     let test_hook = {
         clone_vars!(tx, file3, file3_renamed, file4);
         move || {
+            thread::sleep(Duration::from_millis(100));
             rename_file(&file3, &file3_renamed);
             fs::File::create(&file4).expect("failed to create files");
 
             // TODO: have it check for corresponding logs instead of waiting 1/10 a sec
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(500));
             send_shutdown(&tx);
         }
     };
@@ -116,7 +117,7 @@ fn basic2() {
         clone_vars!(tx);
         move || {
             // TODO: have it check for corresponding logs instead of waiting 1/10 a sec
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(500));
             send_shutdown(&tx);
         }
     };

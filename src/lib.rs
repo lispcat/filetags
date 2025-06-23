@@ -50,7 +50,7 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
     debug!("Config: {:#?}", config);
 
     // start responder
-    let dispatcher = Dispatcher::new(rx, tx, &config)?;
+    let dispatcher = Dispatcher::new(rx, tx, Arc::clone(&config))?;
 
     dispatcher
         // create all necessary dirs
@@ -77,7 +77,7 @@ pub fn run_with_config<F: Fn() + Send + 'static>(
 
     // block this thread until the responder thread completes
     dispatcher
-        .handle
+        .rx_handle
         .join()
         .expect("failed to join respender thread")?;
 

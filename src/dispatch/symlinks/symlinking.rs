@@ -16,7 +16,7 @@ use walkdir::WalkDir;
 use crate::{
     delete_symlink, get_basename, match_event_kinds, symlink_target,
     utils::{calc_link_from_src_orig, path_matches_any_regex},
-    watch_dir_indices_with_refs, Config, WatchEvent,
+    watch_dir_indices_with_refs, Config, NotifyEvent,
 };
 
 // /// Shorthand for sending a query to the Receiver to symlink_create_all.
@@ -39,7 +39,7 @@ pub fn symlink_create_all(config: &Arc<Config>) -> anyhow::Result<()> {
 /// Called from the Receiver.
 ///
 /// Runs `maybe_symlink_path` if the notify event matches `match_event_kinds!()`.
-pub fn handle_notify_event(config: &Config, message: &WatchEvent) -> anyhow::Result<()> {
+pub fn handle_notify_event(config: &Config, message: &NotifyEvent) -> anyhow::Result<()> {
     match message.event.kind {
         match_event_kinds!() => {
             debug!("Received new notify event!: {:?}", message.event.kind);

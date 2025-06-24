@@ -50,7 +50,7 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyh
     Ok(())
 }
 
-/// Identifies whether the symlink at the path is invalid.
+/// Identifies whether the symlink at the path is inappropriate.
 ///
 /// It checks the following:
 /// - does the path match any of the regexes?
@@ -59,15 +59,15 @@ pub fn clean_dir(config: &Arc<Config>, rule_idx: usize, link_idx: usize) -> anyh
 ///
 /// Note that this function does not check whether the file at the path is a symlink or not.
 /// So do that validation beforehand.
-fn inappropriate_symlink(path: &Path, rule: &Rule) -> anyhow::Result<bool> {
+fn inappropriate_symlink(symlink_path: &Path, rule: &Rule) -> anyhow::Result<bool> {
     // pattern doesnt match any regex
-    if !path_matches_any_regex(path, &rule.regex).context("matching regexes")? {
+    if !path_matches_any_regex(symlink_path, &rule.regex).context("matching regexes")? {
         return Ok(true);
     }
 
-    if let Some(symlink_target) = symlink_target(path).context("getting symlink target")? {
+    if let Some(target_path) = symlink_target(symlink_path).context("getting symlink target")? {
         // is symlink_target is not under any watch_dirs?
-        if !path_is_under_any_dirs(&symlink_target, &rule.watch_dirs)? {
+        if !path_is_under_any_dirs(&target_path, &rule.watch_dirs)? {
             return Ok(true);
         }
     } else {

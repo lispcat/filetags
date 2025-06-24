@@ -21,22 +21,6 @@ use crate::{
     Config,
 };
 
-// /// Shorthand for sending a query to the Receiver to symlink_create_all.
-// pub fn query_symlink_create_all(tx: &Sender<Message>) -> anyhow::Result<()> {
-//     tx.send(Message::Action(Action::SymlinkAll))
-//         .context("sending message")
-// }
-
-/// Runs `symlink_create` for every watch_dir in Config.
-pub fn symlink_create_all(config: &Arc<Config>) -> anyhow::Result<()> {
-    for (rule_idx, watch_idx, _, watch_dir) in watch_dir_indices_with_refs(config) {
-        for direntry in WalkDir::new(watch_dir) {
-            symlink_create(config, direntry.unwrap().path(), rule_idx, watch_idx)?;
-        }
-    }
-
-    Ok(())
-}
 /// Handle a notify event.
 /// Called from the Receiver.
 ///
@@ -52,6 +36,17 @@ pub fn handle_notify_event(config: &Config, message: &NotifyEvent) -> anyhow::Re
         }
         _ => (),
     }
+    Ok(())
+}
+
+/// Runs `symlink_create` for every watch_dir in Config, recursively.
+pub fn symlink_create_all(config: &Arc<Config>) -> anyhow::Result<()> {
+    for (rule_idx, watch_idx, _, watch_dir) in watch_dir_indices_with_refs(config) {
+        for direntry in WalkDir::new(watch_dir) {
+            symlink_create(config, direntry.unwrap().path(), rule_idx, watch_idx)?;
+        }
+    }
+
     Ok(())
 }
 

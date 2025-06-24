@@ -79,14 +79,6 @@ impl Dispatcher {
         }))
     }
 
-    /// A buildable method for invoking an `Action` using the dispatcher.
-    pub fn run(self, action: Action) -> anyhow::Result<Self> {
-        self.tx
-            .send(Message::Action(action))
-            .context("sending message")?;
-        Ok(self)
-    }
-
     /// Responds to each Message variant received. Invoked from `start_rx`.
     fn handle_message(message: &Message, config: &Arc<Config>) -> anyhow::Result<Option<Signal>> {
         match message {
@@ -111,6 +103,14 @@ impl Dispatcher {
         }
         // only return Some if returning a Signal, such as a ShutdownSignal.
         Ok(None)
+    }
+
+    /// A buildable method for invoking an `Action` using the dispatcher.
+    pub fn run(self, action: Action) -> anyhow::Result<Self> {
+        self.tx
+            .send(Message::Action(action))
+            .context("sending message")?;
+        Ok(self)
     }
 
     /// A buildable method for launching a `WorkerType`.

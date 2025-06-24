@@ -14,13 +14,14 @@ pub fn start_periodic_cleaners(
     tx: &Sender<Message>,
     config: &Arc<Config>,
 ) -> anyhow::Result<Vec<JoinHandle<anyhow::Result<()>>>> {
-    Ok(collect_cleaner_closures(tx, config)?
+    Ok(create_cleaner_closures(tx, config)?
         .into_iter()
         .map(thread::spawn)
         .collect::<Vec<_>>())
 }
 
-fn collect_cleaner_closures(
+/// Create and return a Vec of closures of periodic cleaners.
+fn create_cleaner_closures(
     tx: &Sender<Message>,
     config: &Arc<Config>,
 ) -> anyhow::Result<Vec<impl FnOnce() -> anyhow::Result<()> + Send + 'static>> {
@@ -32,7 +33,7 @@ fn collect_cleaner_closures(
             if let Some(clean_interval) = rule.settings.clean_interval {
                 clone_vars!(tx, (config: Arc));
                 Some(move || -> anyhow::Result<()> {
-                    periodic_cleaner_process(config, rule_idx, tx, clean_interval)
+                    periodic_cleaner_process(rule_idx, tx, clean_interval, config)
                 })
             } else {
                 None
@@ -41,11 +42,12 @@ fn collect_cleaner_closures(
         .collect::<Vec<_>>())
 }
 
+/// The periodic cleaner process. Meant to be run as a new thread.
 fn periodic_cleaner_process(
-    config: Arc<Config>,
     rule_idx: usize,
     tx: Sender<Message>,
     clean_interval: u32,
+    config: Arc<Config>,
 ) -> anyhow::Result<()> {
     let rule = &config.rules[rule_idx];
     loop {

@@ -40,12 +40,15 @@ pub fn run_with_args(args: Args, tx: Sender<Message>, rx: Receiver<Message>) -> 
 }
 
 /// Run the program with config, tx, rx, and optionally test_hook.
-pub fn run_with_config<F: Fn() + Send + 'static>(
+pub fn run_with_config<F>(
     config: Arc<Config>,
     tx: Sender<Message>,
     rx: Receiver<Message>,
     test_hook: Option<F>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<()>
+where
+    F: Fn() + Send + 'static,
+{
     span_enter!(DEBUG, "running");
     debug!("Config: {:#?}", config);
 

@@ -1,8 +1,7 @@
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::sync::Arc;
 
 use clap::Parser;
 use systemd::daemon;
-use tokio::runtime::Handle;
 use tracing::debug;
 
 // modules
@@ -25,23 +24,27 @@ use crate::{actions::Action, workers::WorkerType};
 // - prevent recursive searching when LinkDir is within WatchDir or symlinking dirs.
 
 /// The default run command.
-pub fn run() -> anyhow::Result<()> {
+pub async fn run() -> anyhow::Result<()> {
     let args = Args::parse();
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
-    run_with_args(args, tx, rx, None).await
+    run_with_args(args, tx, rx).await
 }
 
 /// Run the program with args, tx, and rx.
-pub fn run_with_args(args: Args, tx: Sender<Message>, rx: Receiver<Message>) -> anyhow::Result<()> {
+pub async fn run_with_args(
+    args: Args,
+    tx: Sender<Message>,
+    rx: Receiver<Message>,
+) -> anyhow::Result<()> {
     // create a Config from Args
     let config: Arc<Config> = Config::create(&args)?;
     let _logger = Logger::new();
 
-    run_with_config(config, tx, rx, None::<fn()>)
+    run_with_config(config, tx, rx, None::<fn()>).await
 }
 
 /// Run the program with config, tx, rx, and optionally test_hook.
-pub fn run_with_config<F>(
+pub async fn run_with_config<F>(
     config: Arc<Config>,
     tx: Sender<Message>,
     rx: Receiver<Message>,
@@ -78,9 +81,13 @@ where
     }
 
     // block this thread until the responder thread completes
-    Handle::current()
-        .block_on(dispatcher.rx_handle)
-        .expect("failed to join respender thread")?;
+    dispatcher
+        .rx_handle
+        .await
+        .expect("failed to await responder thread")?;
+    // Handle::current()
+    //     .block_on(dispatcher.rx_handle)
+    //     .expect("failed to join respender thread")?;
 
     Ok(())
 }

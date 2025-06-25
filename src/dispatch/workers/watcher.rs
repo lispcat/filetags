@@ -28,7 +28,7 @@ pub fn start_watchers(
 ) -> anyhow::Result<Vec<JoinHandle<anyhow::Result<()>>>> {
     Ok(create_watcher_closures(tx, config)?
         .into_iter()
-        .map(|fut| tokio::spawn(fut))
+        .map(|future| tokio::spawn(future))
         .collect::<Vec<_>>())
 }
 

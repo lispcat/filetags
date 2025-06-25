@@ -27,10 +27,8 @@ fn create_cleaner_closures(
         .enumerate()
         .filter_map(|(rule_idx, rule)| {
             if let Some(clean_interval) = rule.settings.clean_interval {
-                clone_vars!(tx, (config: Arc));
+                clone_vars!(rule, tx);
                 Some(async move {
-                    // periodic_cleaner_process(rule_idx, tx, clean_interval, config)
-                    let rule = &config.rules[rule_idx];
                     loop {
                         tokio::time::sleep(Duration::from_secs(clean_interval.into())).await;
                         for link_idx in 0..rule.link_dirs.len() {
@@ -46,19 +44,19 @@ fn create_cleaner_closures(
         .collect::<Vec<_>>())
 }
 
-/// The periodic cleaner process. Meant to be run as a new thread.
-async fn periodic_cleaner_process(
-    rule_idx: usize,
-    tx: Sender<Message>,
-    clean_interval: u32,
-    config: Arc<Config>,
-) -> anyhow::Result<()> {
-    let rule = &config.rules[rule_idx];
-    loop {
-        tokio::time::sleep(Duration::from_secs(clean_interval.into())).await;
-        for link_idx in 0..rule.link_dirs.len() {
-            tx.send(Message::Action(Action::CleanDir(rule_idx, link_idx)))
-                .context("sending message CleanDir")?;
-        }
-    }
-}
+// /// The periodic cleaner process. Meant to be run as a new thread.
+// async fn periodic_cleaner_process(
+//     rule_idx: usize,
+//     tx: Sender<Message>,
+//     clean_interval: u32,
+//     config: Arc<Config>,
+// ) -> anyhow::Result<()> {
+//     let rule = &config.rules[rule_idx];
+//     loop {
+//         tokio::time::sleep(Duration::from_secs(clean_interval.into())).await;
+//         for link_idx in 0..rule.link_dirs.len() {
+//             tx.send(Message::Action(Action::CleanDir(rule_idx, link_idx)))
+//                 .context("sending message CleanDir")?;
+//         }
+//     }
+// }

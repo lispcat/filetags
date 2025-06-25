@@ -63,7 +63,9 @@ async fn basic1() {
     };
 
     // start the main process loop
-    run_with_config(config, tx, rx, Some(test_hook)).expect("failed to run main");
+    run_with_config(config, tx, rx, Some(test_hook))
+        .await
+        .expect("failed to run main");
 
     // assertions
     assert_cur_and_exp_trees_eq(
@@ -123,7 +125,9 @@ async fn basic2() {
     };
 
     // start the main process loop
-    run_with_config(config, tx, rx, Some(test_hook)).expect("failed to run main");
+    run_with_config(config, tx, rx, Some(test_hook))
+        .await
+        .expect("failed to run main");
 
     // assertions
     assert_cur_and_exp_trees_eq(

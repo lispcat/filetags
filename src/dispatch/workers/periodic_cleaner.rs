@@ -9,7 +9,7 @@ use crossbeam_channel::Sender;
 
 use crate::{actions::Action, clone_vars, Config, Message};
 
-/// Start symlink cleaners.
+/// Create and start symlink cleaners.
 pub fn start_periodic_cleaners(
     tx: &Sender<Message>,
     config: &Arc<Config>,

@@ -26,6 +26,38 @@ pub struct NotifyEvent {
     pub event: Event,
 }
 
+/// Create and start the INotifyWatchers.
+pub fn start_watchers(
+    tx: &Sender<Message>,
+    config: &Arc<Config>,
+) -> anyhow::Result<Vec<JoinHandle<anyhow::Result<()>>>> {
+    Ok(create_watcher_closures(tx, config)?
+        .into_iter()
+        .map(thread::spawn)
+        .collect::<Vec<_>>())
+}
+
+/// Create and return a Vec of closures of Watchers.
+fn create_watcher_closures(
+    tx: &Sender<Message>,
+    config: &Arc<Config>,
+) -> anyhow::Result<Vec<impl FnOnce() -> anyhow::Result<()> + Send + 'static>> {
+    watch_dir_indices(config)
+        .map(|(rule_idx, watch_idx)| -> anyhow::Result<_> {
+            let mut watcher = create_watcher(tx.clone(), rule_idx, watch_idx)?;
+            let path = config.rules[rule_idx].watch_dirs[watch_idx].clone();
+            Ok(move || -> anyhow::Result<()> {
+                // start the watcher at the path
+                watcher.watch(path.as_path(), RecursiveMode::Recursive)?;
+                // keep it alive
+                loop {
+                    thread::sleep(Duration::from_secs(1));
+                }
+            })
+        })
+        .collect::<anyhow::Result<Vec<_>>>()
+}
+
 /// Create and return an INotifyWatcher. Don't start them just yet.
 fn create_watcher(
     tx: Sender<Message>,
@@ -50,30 +82,4 @@ fn create_watcher(
         }
     })
     .context("creating notify watcher")
-}
-
-/// Collect and start the INotifyWatchers.
-pub fn start_watchers(
-    tx: &Sender<Message>,
-    config: &Arc<Config>,
-) -> anyhow::Result<Vec<JoinHandle<anyhow::Result<()>>>> {
-    let vec_watcher_and_path: Vec<(INotifyWatcher, PathBuf)> = watch_dir_indices(config)
-        .map(|(rule_idx, watch_idx)| -> anyhow::Result<_> {
-            let path = config.rules[rule_idx].watch_dirs[watch_idx].clone();
-            Ok((create_watcher(tx.clone(), rule_idx, watch_idx)?, path))
-        })
-        .collect::<Result<Vec<(_, _)>, _>>()?;
-    Ok(vec_watcher_and_path
-        .into_iter()
-        .map(|(mut watcher, path)| {
-            thread::spawn(move || -> anyhow::Result<()> {
-                // start the watcher at the path
-                watcher.watch(path.as_path(), RecursiveMode::Recursive)?;
-                // keep it alive
-                loop {
-                    thread::sleep(Duration::from_secs(1));
-                }
-            })
-        })
-        .collect::<Vec<_>>())
 }

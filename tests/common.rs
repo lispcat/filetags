@@ -74,7 +74,7 @@ macro_rules! create_symlinks {
 #[macro_export]
 macro_rules! create_tx_rx {
     () => {
-        crossbeam_channel::unbounded::<Message>()
+        tokio::sync::mpsc::unbounded_channel::<Message>()
     };
 }
 

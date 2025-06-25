@@ -1,13 +1,9 @@
-use std::{
-    sync::Arc,
-    thread::{self, JoinHandle},
-    time::Duration,
-};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use crossbeam_channel::Sender;
+use tokio::task::JoinHandle;
 
-use crate::{actions::Action, clone_vars, Config, Message};
+use crate::{actions::Action, clone_vars, Config, Message, Sender};
 
 /// Create and start symlink cleaners.
 pub fn start_periodic_cleaners(
@@ -16,7 +12,7 @@ pub fn start_periodic_cleaners(
 ) -> anyhow::Result<Vec<JoinHandle<anyhow::Result<()>>>> {
     Ok(create_cleaner_closures(tx, config)?
         .into_iter()
-        .map(thread::spawn)
+        .map(|future| tokio::spawn(future))
         .collect::<Vec<_>>())
 }
 
@@ -24,7 +20,7 @@ pub fn start_periodic_cleaners(
 fn create_cleaner_closures(
     tx: &Sender<Message>,
     config: &Arc<Config>,
-) -> anyhow::Result<Vec<impl FnOnce() -> anyhow::Result<()> + Send + 'static>> {
+) -> anyhow::Result<Vec<impl Future<Output = anyhow::Result<()>>>> {
     Ok(config
         .rules
         .iter()
@@ -32,8 +28,16 @@ fn create_cleaner_closures(
         .filter_map(|(rule_idx, rule)| {
             if let Some(clean_interval) = rule.settings.clean_interval {
                 clone_vars!(tx, (config: Arc));
-                Some(move || -> anyhow::Result<()> {
-                    periodic_cleaner_process(rule_idx, tx, clean_interval, config)
+                Some(async move {
+                    // periodic_cleaner_process(rule_idx, tx, clean_interval, config)
+                    let rule = &config.rules[rule_idx];
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(clean_interval.into())).await;
+                        for link_idx in 0..rule.link_dirs.len() {
+                            tx.send(Message::Action(Action::CleanDir(rule_idx, link_idx)))
+                                .context("sending message CleanDir")?;
+                        }
+                    }
                 })
             } else {
                 None
@@ -43,7 +47,7 @@ fn create_cleaner_closures(
 }
 
 /// The periodic cleaner process. Meant to be run as a new thread.
-fn periodic_cleaner_process(
+async fn periodic_cleaner_process(
     rule_idx: usize,
     tx: Sender<Message>,
     clean_interval: u32,
@@ -51,7 +55,7 @@ fn periodic_cleaner_process(
 ) -> anyhow::Result<()> {
     let rule = &config.rules[rule_idx];
     loop {
-        thread::sleep(Duration::from_secs(clean_interval.into()));
+        tokio::time::sleep(Duration::from_secs(clean_interval.into())).await;
         for link_idx in 0..rule.link_dirs.len() {
             tx.send(Message::Action(Action::CleanDir(rule_idx, link_idx)))
                 .context("sending message CleanDir")?;

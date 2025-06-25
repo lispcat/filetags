@@ -7,6 +7,7 @@ use std::{
 use anyhow::Context;
 use regex::Regex;
 use serde::{Serialize, Serializer};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::debug;
 
 use crate::{Config, Message, Rule};
@@ -178,7 +179,7 @@ pub fn delete_symlink(path: &Path, metadata: &Metadata) -> anyhow::Result<()> {
 // channel helpers ////////////////////////////////////////////////////////////
 
 /// Sends a shutdown signal to the corresponding Receiver.
-pub fn send_shutdown(tx: &crossbeam_channel::Sender<Message>) {
+pub fn send_shutdown(tx: &Sender<Message>) {
     // shutdown
     tx.send(Message::Shutdown)
         .expect("failed to shutdown, crashing program");
@@ -239,3 +240,6 @@ macro_rules! with_barrier {
 }
 
 // to sort ////////////////////////////////////////////////////////////////////
+
+pub type Sender<T> = UnboundedSender<T>;
+pub type Receiver<T> = UnboundedReceiver<T>;

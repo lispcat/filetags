@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use clap::Parser;
-use crossbeam_channel::{Receiver, Sender};
 use systemd::daemon;
+use tokio::runtime::Handle;
 use tracing::debug;
 
 // modules
@@ -27,8 +27,8 @@ use crate::{actions::Action, workers::WorkerType};
 /// The default run command.
 pub fn run() -> anyhow::Result<()> {
     let args = Args::parse();
-    let (tx, rx) = crossbeam_channel::unbounded::<Message>();
-    run_with_args(args, tx, rx)
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+    run_with_args(args, tx, rx, None).await
 }
 
 /// Run the program with args, tx, and rx.
@@ -78,9 +78,8 @@ where
     }
 
     // block this thread until the responder thread completes
-    dispatcher
-        .rx_handle
-        .join()
+    Handle::current()
+        .block_on(dispatcher.rx_handle)
         .expect("failed to join respender thread")?;
 
     Ok(())

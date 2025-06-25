@@ -1,19 +1,14 @@
-use std::{
-    path::PathBuf,
-    sync::Arc,
-    thread::{self, JoinHandle},
-    time::Duration,
-};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use anyhow::Context;
-use crossbeam_channel::{self, Sender};
 use notify::{
     event::{ModifyKind, RenameMode},
     Event, EventKind, INotifyWatcher, RecursiveMode, Watcher,
 };
+use tokio::task::JoinHandle;
 use tracing::debug;
 
-use crate::{match_event_kinds, watch_dir_indices, Config};
+use crate::{match_event_kinds, watch_dir_indices, Config, Sender};
 
 use crate::Message;
 
@@ -33,7 +28,7 @@ pub fn start_watchers(
 ) -> anyhow::Result<Vec<JoinHandle<anyhow::Result<()>>>> {
     Ok(create_watcher_closures(tx, config)?
         .into_iter()
-        .map(thread::spawn)
+        .map(|fut| tokio::spawn(fut))
         .collect::<Vec<_>>())
 }
 
@@ -41,17 +36,17 @@ pub fn start_watchers(
 fn create_watcher_closures(
     tx: &Sender<Message>,
     config: &Arc<Config>,
-) -> anyhow::Result<Vec<impl FnOnce() -> anyhow::Result<()> + Send + 'static>> {
+) -> anyhow::Result<Vec<impl Future<Output = anyhow::Result<()>>>> {
     watch_dir_indices(config)
         .map(|(rule_idx, watch_idx)| -> anyhow::Result<_> {
             let mut watcher = create_watcher(tx.clone(), rule_idx, watch_idx)?;
             let path = config.rules[rule_idx].watch_dirs[watch_idx].clone();
-            Ok(move || -> anyhow::Result<()> {
+            Ok(async move {
                 // start the watcher at the path
                 watcher.watch(path.as_path(), RecursiveMode::Recursive)?;
                 // keep it alive
                 loop {
-                    thread::sleep(Duration::from_secs(1));
+                    tokio::time::sleep(Duration::from_secs(1)).await;
                 }
             })
         })

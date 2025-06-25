@@ -1,7 +1,4 @@
-use std::{
-    sync::Arc,
-    thread::{self, JoinHandle},
-};
+use std::sync::Arc;
 
 use actions::{
     cleaning::{clean_all, clean_dir},
@@ -10,14 +7,14 @@ use actions::{
     Action,
 };
 use anyhow::Context;
-use crossbeam_channel::{Receiver, Sender};
+use tokio::task::JoinHandle;
 use workers::{
     periodic_cleaner::start_periodic_cleaners,
     watcher::{start_watchers, NotifyEvent},
     WorkerType,
 };
 
-use crate::Config;
+use crate::{Config, Receiver, Sender};
 
 pub mod actions;
 pub mod workers;
@@ -62,12 +59,12 @@ impl Dispatcher {
     /// Starts the responder queue.
     /// For each Message it receives through rx, it handles it through `handle_message`.
     fn start_rx(
-        rx: Receiver<Message>,
+        mut rx: Receiver<Message>,
         config: Arc<Config>,
     ) -> anyhow::Result<JoinHandle<anyhow::Result<()>>> {
-        Ok(thread::spawn(move || -> anyhow::Result<()> {
+        Ok(tokio::spawn(async move {
             loop {
-                let message = rx.recv().context("Responder waiting for Message")?;
+                let message = rx.recv().await.context("Responder waiting for Message")?;
                 let maybe_signal =
                     Self::handle_message(&message, &config).context("handling message")?;
                 if let Some(signal) = maybe_signal {

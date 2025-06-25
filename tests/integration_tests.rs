@@ -8,16 +8,16 @@ use regex::Regex;
 use common::*;
 use tracing::{info, info_span, warn};
 
-#[test]
-fn logging_wip() {
+#[tokio::test]
+async fn logging_wip() {
     let _logger = Logger::new();
 
     info!("This is an info message!");
     warn!("This is a warn message!");
 }
 
-#[test]
-fn basic1() {
+#[tokio::test]
+async fn basic1() {
     // init
     let (_, root) = create_test_env();
     let (tx, rx) = create_tx_rx!();
@@ -84,8 +84,8 @@ fn basic1() {
 
 // TODO: make this into a bunch of tinier integ tests, where there's only one file per test (use a macro for templating this whole thing!!!!! and make like, 10 basic tests!)
 
-#[test]
-fn basic2() {
+#[tokio::test]
+async fn basic2() {
     // init
     let (_, root) = create_test_env();
     let (tx, rx) = create_tx_rx!();
